@@ -1,0 +1,20 @@
+opam-version: "1.2"
+authors: ["Petter A. Urkedal"]
+maintainer: ["urkedal@nbi.dk"]
+homepage: "https://wiki.nbi.ku.dk/evbudget"
+bug-reports: "mailto:nimbus-support@nbi.ku.dk"
+dev-repo: "gitolite3@git.nbi.ku.dk:subsocia-sync-ldap.git"
+license: "GPL-3"
+
+build: [["jbuilder" "build" "-p" name "-j" jobs]]
+build-test: [["jbuilder" "runtest" "-p" name "-j" jobs]]
+
+depends: [
+  "cmdliner"
+  "jbuilder" {build}
+  "lwt"
+  "ocaml-inifiles"
+  "subsocia"
+  "topkg" {build}
+  "topkg-jbuilder" {build}
+]
