@@ -26,7 +26,7 @@ type ldap_filter = string
 type extract =
   | Ldap_attribute of ldap_attribute_type
   | Map_literal of string Dict.t * template
-  | Map_regexp of (Re.Mark.t * Re.t * string) list * template
+  | Map_regexp of Re.re * (Re.Mark.t * template) list * template
   [@@deriving show]
 
 type inclusion = {
@@ -137,9 +137,12 @@ let get_mapping conv ini section var =
   get_list (mapping_of_string conv) ini section var
 
 let get_regexp_mapping ini section var =
-  get_mapping
-    (fun (k, v) -> let (mark, re) = Re.mark (Re_pcre.re k) in (mark, re, v))
-    ini section var
+  let rms =
+    get_mapping
+      (fun (k, v) -> let (mark, re) = Re.mark (Re_pcre.re k) in (re, (mark, v)))
+      ini section var
+  in
+  (Re.compile (Re.alt (List.map fst rms)), List.map snd rms)
 
 let get_literal_mapping ini section var =
   get_mapping (fun (k, v) -> (k, v)) ini section var
@@ -178,8 +181,8 @@ let literal_mapping_of_inifile ini section =
 
 let regexp_mapping_of_inifile ini section =
   let input = get_string ini section "input" in
-  let mapping = get_regexp_mapping ini section "case" in
-  Map_regexp (mapping, input)
+  let re, mapping = get_regexp_mapping ini section "case" in
+  Map_regexp (re, mapping, input)
 
 let ldap_attribute_of_inifile ini section =
   let ldap_attribute_type = get_string ini section "ldap_attribute_type" in

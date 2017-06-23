@@ -22,6 +22,8 @@ open Subsocia_connection
 
 module SASL = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
 
+let failwith_f fmt = ksprintf failwith fmt
+
 let connect config =
   Lwt_log.ign_info_f "Connecting to %s." (Uri.to_string config.ldap_uri);
   let ldap_server, ldap_host =
@@ -31,7 +33,7 @@ let connect config =
         let port = match Uri.port uri with Some port -> port | None -> 389 in
         Netldap.ldap_server (`Inet_byname (host, port)), host
      | Some scheme, _ ->
-        ksprintf failwith "Unsupported protocol %s." scheme
+        failwith_f "Unsupported protocol %s." scheme
      | _, None ->
         failwith "Missing host name in LDAP uri.")
   in
@@ -49,10 +51,62 @@ let connect config =
   Netldap.conn_bind ldap_conn bind_creds;
   ldap_conn
 
+(* Template and Variable Expansion *)
+
+let route_regexp re mapping x =
+  (match Re.exec_opt re x with
+   | None -> x
+   | Some g ->
+      let rec loop = function
+       | [] -> assert false
+       | (mark, y) :: mapping -> if Re.Mark.test g mark then y else loop mapping
+      in
+      loop mapping)
+
+let rec lookup_multi cfg lentry var =
+  (match Dict.find var cfg.bindings with
+   | Ldap_attribute at ->
+      List.assoc at (snd lentry)
+   | Map_literal (d, tmpl) ->
+      expand_multi cfg lentry tmpl
+        |> List.map (fun x -> try Dict.find x d with Not_found -> x)
+   | Map_regexp (re, mapping, tmpl) ->
+      expand_multi cfg lentry tmpl
+        |> List.map (expand_multi cfg lentry % route_regexp re mapping)
+        |> List.flatten)
+
+and lookup_single cfg lentry ~tmpl var =
+  (match lookup_multi cfg lentry var with
+   | [x] -> x
+   | _ ->
+      failwith_f "Need single valued %s for substitution into %S." var tmpl)
+
+and expand_multi cfg lentry tmpl =
+  (* This allows multi-valued "${bare_variable}" templates.  We could also allow
+   * multi-valued deep substitions if needed, either as a direct product or by
+   * specified reductions like ${variable | concat ","}. *)
+  (match%pcre tmpl with
+   | {q|^\$\{(?<var>[^{}]+)\}$|q} -> lookup_multi cfg lentry var
+   | _ -> [expand_single cfg lentry tmpl])
+
+and expand_single cfg lentry tmpl =
+  let buf = Buffer.create (String.length tmpl) in
+  Buffer.add_substitute buf (lookup_single cfg lentry ~tmpl) tmpl;
+  Buffer.contents buf
+
+(* Target Processing *)
+
 let process_entry config target = function
  | `Reference _ -> assert false
- | `Entry (dn, attrs) ->
-    Lwt_log.info_f "Processing %s" dn
+ | `Entry ((dn, _) as lentry) ->
+    let target_path_str = expand_single config lentry target.entity_path in
+    let target_path = Subsocia_selector.selector_of_string target_path_str in
+    Lwt_log.debug_f "Processing %s => %s" dn target_path_str >>
+    (match%lwt Entity.select_opt target_path with
+     | None ->
+        Lwt_log.info_f "NEW %s => %s" dn target_path_str
+     | Some sent ->
+        Lwt_log.info_f "CHK %s => %s" dn target_path_str)
 
 let process_target config ldap_conn (target_name, target) =
   let filter =

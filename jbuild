@@ -4,6 +4,7 @@
  ((name sync)
   (modules (Config Sync))
   (flags (-thread -ppx ppx_lwt))
+  (preprocess (pps (ppx_compose ppx_regexp)))
   (libraries
    (angstrom
     cmdliner
