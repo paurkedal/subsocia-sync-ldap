@@ -149,6 +149,28 @@ let process_attribution config lentry target_entity attribution =
   in
   Lwt_list.iter_s replace attribution.replace
 
+let select_or_warn sel =
+  (match%lwt Entity.select_opt sel with
+   | None ->
+      Lwt_log.warning_f "Cannot find %s."
+        (Subsocia_selector.string_of_selector sel) >>
+      Lwt.return_none
+   | Some ent ->
+      Lwt.return_some ent)
+
+let process_inclusion config lentry target_entity inclusion =
+  (* TODO: inclusion.relax_super *)
+  let fsup_paths = expand_multi config lentry inclusion.force_super in
+  let fsup_paths = List.map Subsocia_selector.selector_of_string fsup_paths in
+  let%lwt fsup_entities = Lwt_list.filter_map_s select_or_warn fsup_paths in
+  let force_super super_entity =
+    if%lwt not =|< Entity.is_sub target_entity super_entity then
+      let%lwt super_name = Entity.display_name super_entity in
+      Lwt_log.info_f "≼ %s" super_name >>
+      Entity.force_dsub target_entity super_entity
+  in
+  Lwt_list.iter_s force_super fsup_entities
+
 let process_entry config target target_type = function
  | `Reference _ -> assert false
  | `Entry ((dn, _) as lentry) ->
@@ -165,7 +187,9 @@ let process_entry config target target_type = function
           Lwt.return target_entity)
     in
     Lwt_list.iter_s (process_attribution config lentry target_entity)
-                    target.attributions
+      target.attributions >>
+    Lwt_list.iter_s (process_inclusion config lentry target_entity)
+      target.inclusions
 
 let process_target config ldap_conn (target_name, target) =
   let filter = target.ldap_filter in
