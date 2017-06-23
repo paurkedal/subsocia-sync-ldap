@@ -42,7 +42,7 @@ type attribution = {
 type target = {
   ldap_base_dn: ldap_dn;
   ldap_filter: ldap_filter;
-  entity_type: string option;
+  entity_type: string;
   entity_path: string;
   inclusions: inclusion list;
   attributions: attribution list;
@@ -161,7 +161,7 @@ let get_literal_mapping ini section var =
 let target_of_inifile ini section = {
   ldap_base_dn = get_string ini section "ldap_base_dn";
   ldap_filter = get Netldapx_filter.of_string ini section "ldap_filter";
-  entity_type = get_string_opt ini section "entity_type";
+  entity_type = get_string ini section "entity_type";
   entity_path = get_string ini section "entity_path";
   inclusions = [];
   attributions = [];

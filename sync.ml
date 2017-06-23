@@ -18,6 +18,7 @@
 open Config
 open Lwt.Infix
 open Printf
+open Subsocia_common
 open Subsocia_connection
 
 module SASL = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
@@ -96,20 +97,71 @@ and expand_single cfg lentry tmpl =
 
 (* Target Processing *)
 
-let process_entry config target = function
+type attribute_binding =
+ | Attribute_binding : 'a Attribute_type.t * 'a Values.t -> attribute_binding
+
+let create_entity target_path target_type =
+  let pfx, aconj = Subsocia_selector.add_selector_of_selector target_path in
+  let%lwt pfx_entity =
+    (match pfx with
+     | None -> Entity.root
+     | Some pfx -> Entity.select_one pfx)
+  in
+  let resolve (atn, values) =
+    let%lwt Attribute_type.Ex at = Attribute_type.required atn in
+    let vt = Attribute_type.value_type at in
+    let values = List.map (Value.typed_of_string vt) values in
+    Lwt.return (Attribute_binding (at, Values.of_elements vt values))
+  in
+  let%lwt aconj = Lwt_list.map_s resolve (String_map.bindings aconj) in
+  let%lwt entity = Entity.create target_type in
+  Lwt_list.iter_s
+    (fun (Attribute_binding (at, values)) ->
+      Entity.set_values at values pfx_entity entity) aconj
+  >|= fun () -> entity
+
+let process_attribution config lentry target_entity attribution =
+  let source_path_str = expand_single config lentry attribution.source in
+  let source_path = Subsocia_selector.selector_of_string source_path_str in
+  let%lwt source_entity = Entity.select_one source_path in
+  let replace (atn, tmpl) =
+    Lwt_log.debug_f "R %s" atn >>
+    let%lwt Attribute_type.Ex at = Attribute_type.required atn in
+    let vt = Attribute_type.value_type at in
+    let values_str = expand_multi config lentry tmpl in
+    let values = List.map (Value.typed_of_string vt) values_str in
+    let values = Values.of_elements vt values in
+    let%lwt old_values = Entity.get_values at source_entity target_entity in
+    if Values.elements values = Values.elements old_values then
+      Lwt.return_unit else
+    Lwt_log.info_f "- %s {%s} ↦ {%s}" atn
+      (Values.to_json_string vt old_values)
+      (Values.to_json_string vt values) >>
+    Entity.set_values at values source_entity target_entity
+  in
+  Lwt_list.iter_s replace attribution.replace
+
+let process_entry config target target_type = function
  | `Reference _ -> assert false
  | `Entry ((dn, _) as lentry) ->
     let target_path_str = expand_single config lentry target.entity_path in
     let target_path = Subsocia_selector.selector_of_string target_path_str in
     Lwt_log.debug_f "Processing %s => %s" dn target_path_str >>
-    (match%lwt Entity.select_opt target_path with
-     | None ->
-        Lwt_log.info_f "N %s ↦ %s" dn target_path_str
-     | Some sent ->
-        Lwt_log.info_f "U %s ↦ %s" dn target_path_str)
+    let%lwt target_entity =
+      (match%lwt Entity.select_opt target_path with
+       | None ->
+          Lwt_log.info_f "N %s ↦ %s" dn target_path_str >>
+          create_entity target_path target_type
+       | Some target_entity ->
+          Lwt_log.info_f "U %s ↦ %s" dn target_path_str >>
+          Lwt.return target_entity)
+    in
+    Lwt_list.iter_s (process_attribution config lentry target_entity)
+                    target.attributions
 
 let process_target config ldap_conn (target_name, target) =
   let filter = target.ldap_filter in
+  let%lwt target_type = Entity_type.required target.entity_type in
   let%lwt lr =
     Lwt_preemptive.detach
       (Netldap.search ldap_conn
@@ -125,13 +177,13 @@ let process_target config ldap_conn (target_name, target) =
   in
   (match lr#code with
    | `Success ->
-      Lwt_list.iter_s (process_entry config target) lr#value
+      Lwt_list.iter_s (process_entry config target target_type) lr#value
    | `TimeLimitExceeded ->
       Lwt_log.warning_f "Result is incomplete due to time limit." >>
-      Lwt_list.iter_s (process_entry config target) lr#partial_value
+      Lwt_list.iter_s (process_entry config target target_type) lr#partial_value
    | `SizeLimitExceeded ->
       Lwt_log.warning_f "Result is incomplete due to size limit." >>
-      Lwt_list.iter_s (process_entry config target) lr#partial_value
+      Lwt_list.iter_s (process_entry config target target_type) lr#partial_value
    | _ ->
       Lwt_log.error_f "LDAP search for target %s failed: %s"
         target_name lr#diag_msg)
