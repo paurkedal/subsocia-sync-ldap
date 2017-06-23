@@ -25,7 +25,7 @@ type ldap_filter = Netldap.filter
 
 type extract =
   | Ldap_attribute of ldap_attribute_type
-  | Map_literal of string Dict.t * template
+  | Map_literal of string Dict.t * template * bool
   | Map_regexp of Re.re * (Re.Mark.t * template) list * template
   [@@deriving show]
 
@@ -119,6 +119,7 @@ let get_list conv ini section var =
    | Invalid_argument _ | Failure _ | Not_found ->
       error_f "Invalid value for %s in section %s." var section
 
+let get_bool ini = get bool_of_string ini
 let get_string ini = get (fun x -> x) ini
 let get_string_opt ini = get_opt (fun x -> x) ini
 let get_uri ini = get Uri.of_string ini
@@ -185,7 +186,8 @@ let attribution_of_inifile ini section =
 let literal_mapping_of_inifile ini section =
   let input = get_string ini section "input" in
   let mapping = get_literal_mapping ini section "case" in
-  Map_literal (mapping, input)
+  let passthrough = get_bool ini section "passthrough" in
+  Map_literal (mapping, input, passthrough)
 
 let regexp_mapping_of_inifile ini section =
   let input = get_string ini section "input" in

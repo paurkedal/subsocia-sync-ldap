@@ -20,6 +20,7 @@ open Lwt.Infix
 open Printf
 open Subsocia_common
 open Subsocia_connection
+open Unprime_list
 
 module SASL = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
 
@@ -66,11 +67,16 @@ let route_regexp re mapping x =
 
 let rec lookup_multi cfg lentry var =
   (match Dict.find var cfg.bindings with
+   | exception Not_found ->
+      failwith_f "Undefined variable %s." var
    | Ldap_attribute at ->
-      List.assoc at (snd lentry)
-   | Map_literal (d, tmpl) ->
+      (try List.assoc at (snd lentry) with Not_found -> [])
+   | Map_literal (d, tmpl, true) ->
       expand_multi cfg lentry tmpl
         |> List.map (fun x -> try Dict.find x d with Not_found -> x)
+   | Map_literal (d, tmpl, false) ->
+      expand_multi cfg lentry tmpl
+        |> List.fmap (fun x -> try Some (Dict.find x d) with Not_found -> None)
    | Map_regexp (re, mapping, tmpl) ->
       expand_multi cfg lentry tmpl
         |> List.map (expand_multi cfg lentry % route_regexp re mapping)
@@ -79,8 +85,10 @@ let rec lookup_multi cfg lentry var =
 and lookup_single cfg lentry ~tmpl var =
   (match lookup_multi cfg lentry var with
    | [x] -> x
+   | [] ->
+      failwith_f "Cannot substitute undefined %s into %S." var tmpl
    | _ ->
-      failwith_f "Need single valued %s for substitution into %S." var tmpl)
+      failwith_f "Cannot substitute multi-valued %s into %S." var tmpl)
 
 and expand_multi cfg lentry tmpl =
   (* This allows multi-valued "${bare_variable}" templates.  We could also allow
@@ -193,6 +201,8 @@ let process config =
   Lwt_list.iter_s (process_target config ldap_conn)
                   (Dict.bindings config.targets) >>
   Lwt_log.info "Done."
+
+(* Main *)
 
 let main config_file =
   let ini =
