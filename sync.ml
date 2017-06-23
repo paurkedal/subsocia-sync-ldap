@@ -142,7 +142,7 @@ let process_attribution config lentry target_entity attribution =
     let%lwt old_values = Entity.get_values at source_entity target_entity in
     if Values.elements values = Values.elements old_values then
       Lwt.return_unit else
-    Lwt_log.info_f "- %s {%s} ↦ {%s}" atn
+    Lwt_log.info_f "- %s %s ↦ %s" atn
       (Values.to_json_string vt old_values)
       (Values.to_json_string vt values) >>
     Entity.set_values at values source_entity target_entity
