@@ -180,7 +180,7 @@ let process_target config ldap_conn (target_name, target) =
         ~time_limit:10 (* FIXME *)
         ~types_only:false
         ~filter
-        ~attributes:["cn"; "sn"; "givenName"; "mail"; "memberOf"])
+        ~attributes:target.ldap_attributes)
       ()
   in
   (match lr#code with
