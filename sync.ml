@@ -104,16 +104,12 @@ let process_entry config target = function
     Lwt_log.debug_f "Processing %s => %s" dn target_path_str >>
     (match%lwt Entity.select_opt target_path with
      | None ->
-        Lwt_log.info_f "NEW %s => %s" dn target_path_str
+        Lwt_log.info_f "N %s ↦ %s" dn target_path_str
      | Some sent ->
-        Lwt_log.info_f "CHK %s => %s" dn target_path_str)
+        Lwt_log.info_f "U %s ↦ %s" dn target_path_str)
 
 let process_target config ldap_conn (target_name, target) =
-  let filter =
-    `And [
-      `Equality_match ("objectClass", "organizationalPerson");
-    ]
-  in
+  let filter = target.ldap_filter in
   let%lwt lr =
     Lwt_preemptive.detach
       (Netldap.search ldap_conn

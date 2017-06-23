@@ -21,7 +21,7 @@ type variable = string
 type template = string
 type ldap_attribute_type = string
 type ldap_dn = string
-type ldap_filter = string
+type ldap_filter = Netldap.filter
 
 type extract =
   | Ldap_attribute of ldap_attribute_type
@@ -96,24 +96,32 @@ let add_binding variable extract cfg =
 
 (* Inifile Getters and Parsers *)
 
-let get_string ini section var =
-  try ini#getval section var with
+let get conv ini section var =
+  try conv (ini#getval section var) with
    | Inifiles.Invalid_element _ ->
       error_f "Missing required setting %s in section %s." var section
    | Inifiles.Invalid_section _ ->
       error_f "Missing required section %s." section
+   | Invalid_argument _ | Failure _ ->
+      error_f "Invalid value for %s in section %s." var section
 
-let get_uri ini section var = Uri.of_string (get_string ini section var)
-
-let get_string_opt ini section var =
-  try Some (ini#getval section var) with
-   | Inifiles.Invalid_element _ | Inifiles.Invalid_section _ -> None
+let get_opt conv ini section var =
+  try Some (conv (ini#getval section var)) with
+   | Inifiles.Invalid_element _ | Inifiles.Invalid_section _ ->
+      None
+   | Invalid_argument _ | Failure _ ->
+      error_f "Invalid value for %s in section %s." var section
 
 let get_list conv ini section var =
   try List.map conv (ini#getaval section var) with
-   | Inifiles.Invalid_element _ | Inifiles.Invalid_section _ -> []
+   | Inifiles.Invalid_element _ | Inifiles.Invalid_section _ ->
+      []
    | Invalid_argument _ | Failure _ | Not_found ->
       error_f "Invalid value for %s in section %s." var section
+
+let get_string ini = get (fun x -> x) ini
+let get_string_opt ini = get_opt (fun x -> x) ini
+let get_uri ini = get Uri.of_string ini
 
 let mapping_parser =
   let open Angstrom in
@@ -152,7 +160,7 @@ let get_literal_mapping ini section var =
 
 let target_of_inifile ini section = {
   ldap_base_dn = get_string ini section "ldap_base_dn";
-  ldap_filter = get_string ini section "ldap_filter";
+  ldap_filter = get Netldapx_filter.of_string ini section "ldap_filter";
   entity_type = get_string_opt ini section "entity_type";
   entity_path = get_string ini section "entity_path";
   inclusions = [];
