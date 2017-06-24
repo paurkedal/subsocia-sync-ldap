@@ -16,3 +16,4 @@
  *)
 
 val of_string : string -> Netldap.filter
+val to_string : Netldap.filter -> string

@@ -42,4 +42,27 @@ let rec of_ldap_filter = function
                        a.matchValue,
                        a.dnAttributes)
 
+let rec to_ldap_filter = function
+ | `And zs -> `And (List.map to_ldap_filter zs)
+ | `Or zs -> `Or (List.map to_ldap_filter zs)
+ | `Not z -> `Not (to_ldap_filter z)
+ | `Equality_match (attributeDesc, assertionValue) ->
+    `EqualityMatch {attributeDesc; assertionValue}
+ | `Substrings (attrtype, substr_initial, substr_any, substr_final) ->
+    let substr_initial = match substr_initial with None -> [] | Some x -> [x] in
+    let substr_final = match substr_final with None -> [] | Some x -> [x] in
+    let substrings = {substr_initial; substr_any; substr_final} in
+    `Substrings {attrtype; substrings} (* TODO: Check *)
+ | `Greater_or_equal (attributeDesc, assertionValue) ->
+    `GreaterOrEqual {attributeDesc; assertionValue}
+ | `Less_or_equal (attributeDesc, assertionValue) ->
+    `LessOrEqual {attributeDesc; assertionValue}
+ | `Present atn -> `Present atn
+ | `Approx_match (attributeDesc, assertionValue) ->
+    `ApproxMatch {attributeDesc; assertionValue}
+ | `Extensible_match (matchingRule, ruletype, matchValue, dnAttributes) ->
+    (* TODO: Check *)
+    `ExtensibleMatch {matchingRule; ruletype; matchValue; dnAttributes}
+
 let of_string s = of_ldap_filter (Ldap_filter.of_string s)
+let to_string z = Ldap_filter.to_string (to_ldap_filter z)
