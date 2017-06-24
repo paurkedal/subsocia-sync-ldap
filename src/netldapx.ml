@@ -17,10 +17,21 @@
 
 open Ldap_types
 
-let rec of_ldap_filter = function
- | `And zs -> `And (List.map of_ldap_filter zs)
- | `Or zs -> `Or (List.map of_ldap_filter zs)
- | `Not z -> `Not (of_ldap_filter z)
+let scope_of_string = function
+ | "base" -> `Base
+ | "one" -> `One
+ | "sub" | "subtree" -> `Sub
+ | noscope -> failwith ("Invalid LDAP scope " ^ noscope)
+
+let string_of_scope = function
+ | `Base -> "base"
+ | `One -> "one"
+ | `Sub -> "sub"
+
+let rec filter_of_ocamldapfilter = function
+ | `And zs -> `And (List.map filter_of_ocamldapfilter zs)
+ | `Or zs -> `Or (List.map filter_of_ocamldapfilter zs)
+ | `Not z -> `Not (filter_of_ocamldapfilter z)
  | `EqualityMatch a -> `Equality_match (a.attributeDesc, a.assertionValue)
  | `Substrings a ->
     let to_opt = function
@@ -42,10 +53,10 @@ let rec of_ldap_filter = function
                        a.matchValue,
                        a.dnAttributes)
 
-let rec to_ldap_filter = function
- | `And zs -> `And (List.map to_ldap_filter zs)
- | `Or zs -> `Or (List.map to_ldap_filter zs)
- | `Not z -> `Not (to_ldap_filter z)
+let rec ocamldapfilter_of_filter = function
+ | `And zs -> `And (List.map ocamldapfilter_of_filter zs)
+ | `Or zs -> `Or (List.map ocamldapfilter_of_filter zs)
+ | `Not z -> `Not (ocamldapfilter_of_filter z)
  | `Equality_match (attributeDesc, assertionValue) ->
     `EqualityMatch {attributeDesc; assertionValue}
  | `Substrings (attrtype, substr_initial, substr_any, substr_final) ->
@@ -64,5 +75,5 @@ let rec to_ldap_filter = function
     (* TODO: Check *)
     `ExtensibleMatch {matchingRule; ruletype; matchValue; dnAttributes}
 
-let of_string s = of_ldap_filter (Ldap_filter.of_string s)
-let to_string z = Ldap_filter.to_string (to_ldap_filter z)
+let filter_of_string s = filter_of_ocamldapfilter (Ldap_filter.of_string s)
+let string_of_filter z = Ldap_filter.to_string (ocamldapfilter_of_filter z)

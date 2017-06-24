@@ -15,5 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-val of_string : string -> Netldap.filter
-val to_string : Netldap.filter -> string
+val scope_of_string : string -> Netldap.scope
+val string_of_scope : Netldap.scope -> string
+
+val filter_of_string : string -> Netldap.filter
+val string_of_filter : Netldap.filter -> string

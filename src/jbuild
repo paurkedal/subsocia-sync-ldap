@@ -2,7 +2,7 @@
 
 (executable
  ((name sync)
-  (modules (Config Netldapx_filter Sync))
+  (modules (Config Netldapx Sync))
   (flags (-thread -ppx ppx_lwt))
   (preprocess (pps (ppx_compose ppx_regexp)))
   (libraries

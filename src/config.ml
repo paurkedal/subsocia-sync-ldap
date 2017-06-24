@@ -163,24 +163,14 @@ let get_literal_mapping ini section var =
   get_mapping (fun (k, v) -> (k, v)) ini section var
     |> List.fold_left (fun dict (k, v) -> Dict.add k v dict) Dict.empty
 
-let scope_of_string = function
- | "base" -> `Base
- | "one" -> `One
- | "sub" | "subtree" -> `Sub
- | noscope -> failwith ("Invalid LDAP scope " ^ noscope)
-
-let string_of_scope = function
- | `Base -> "base"
- | `One -> "one"
- | `Sub -> "sub"
-
 (* Config from .ini *)
 
 let target_of_inifile ini section = {
   ldap_base_dn = get_string ini section "ldap_base_dn";
   ldap_scope =
-    Option.get_or `Sub (get_opt scope_of_string ini section "ldap_scope");
-  ldap_filter = get Netldapx_filter.of_string ini section "ldap_filter";
+    Option.get_or `Sub
+      (get_opt Netldapx.scope_of_string ini section "ldap_scope");
+  ldap_filter = get Netldapx.filter_of_string ini section "ldap_filter";
   ldap_attributes = get_list (fun s -> s) ini section "ldap_attribute";
   ldap_size_limit = get_opt int_of_string ini section "ldap_size_limit";
   ldap_time_limit = get_opt int_of_string ini section "ldap_time_limit";
