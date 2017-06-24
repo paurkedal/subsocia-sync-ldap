@@ -58,7 +58,7 @@ let connect config =
 
 let route_regexp re mapping x =
   (match Re.exec_opt re x with
-   | None -> x
+   | None -> Template.literal x
    | Some g ->
       let rec loop = function
        | [] -> assert false
@@ -87,22 +87,19 @@ and lookup_single cfg lentry ~tmpl var =
   (match lookup_multi cfg lentry var with
    | [x] -> x
    | [] ->
-      failwith_f "Cannot substitute undefined %s into %S." var tmpl
+      failwith_f "Cannot substitute undefined %s into %S."
+                 var (Template.to_string tmpl)
    | _ ->
-      failwith_f "Cannot substitute multi-valued %s into %S." var tmpl)
+      failwith_f "Cannot substitute multi-valued %s into %S."
+                 var (Template.to_string tmpl))
 
 and expand_multi cfg lentry tmpl =
-  (* This allows multi-valued "${bare_variable}" templates.  We could also allow
-   * multi-valued deep substitions if needed, either as a direct product or by
-   * specified reductions like ${variable | concat ","}. *)
-  (match%pcre tmpl with
-   | {q|^\$\{(?<var>[^{}]+)\}$|q} -> lookup_multi cfg lentry var
-   | _ -> [expand_single cfg lentry tmpl])
+  Template.expand_fold
+    (fun var f -> List.fold f (lookup_multi cfg lentry var))
+    List.cons tmpl []
 
 and expand_single cfg lentry tmpl =
-  let buf = Buffer.create (String.length tmpl) in
-  Buffer.add_substitute buf (lookup_single cfg lentry ~tmpl) tmpl;
-  Buffer.contents buf
+  Template.expand (lookup_single cfg lentry ~tmpl) tmpl
 
 (* Target Processing *)
 

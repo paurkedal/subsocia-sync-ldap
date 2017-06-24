@@ -19,25 +19,24 @@ open Unprime_option
 module Dict = Map.Make (String)
 
 type variable = string
-type template = string
 type ldap_attribute_type = string
 type ldap_dn = string
 type ldap_filter = Netldap.filter
 
 type extract =
   | Ldap_attribute of ldap_attribute_type
-  | Map_literal of string Dict.t * template * bool
-  | Map_regexp of Re.re * (Re.Mark.t * template) list * template
+  | Map_literal of string Dict.t * Template.t * bool
+  | Map_regexp of Re.re * (Re.Mark.t * Template.t) list * Template.t
   [@@deriving show]
 
 type inclusion = {
-  relax_super: template option;
-  force_super: template;
+  relax_super: Template.t option;
+  force_super: Template.t;
 } [@@deriving show]
 
 type attribution = {
-  source: template;
-  replace: (string * template) list;
+  source: Template.t;
+  replace: (string * Template.t) list;
 } [@@deriving show]
 
 type target = {
@@ -48,7 +47,7 @@ type target = {
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   entity_type: string;
-  entity_path: string;
+  entity_path: Template.t;
   inclusions: inclusion list;
   attributions: attribution list;
 } [@@deriving show]
@@ -155,7 +154,9 @@ let get_mapping conv ini section var =
 let get_regexp_mapping ini section var =
   let rms =
     get_mapping
-      (fun (k, v) -> let (mark, re) = Re.mark (Re_pcre.re k) in (re, (mark, v)))
+      (fun (k, v) ->
+        let (mark, re) = Re.mark (Re_pcre.re k) in
+        (re, (mark, Template.of_string v)))
       ini section var
   in
   (Re.compile (Re.alt (List.map fst rms)), List.map snd rms)
@@ -176,23 +177,25 @@ let target_of_inifile ini section = {
   ldap_size_limit = get_opt int_of_string ini section "ldap_size_limit";
   ldap_time_limit = get_opt int_of_string ini section "ldap_time_limit";
   entity_type = get_string ini section "entity_type";
-  entity_path = get_string ini section "entity_path";
+  entity_path = get Template.of_string ini section "entity_path";
   inclusions = [];
   attributions = [];
 }
 
 let inclusion_of_inifile ini section = {
-  relax_super = get_string_opt ini section "relax_super";
-  force_super = get_string ini section "force_super";
+  relax_super = get_opt Template.of_string ini section "relax_super";
+  force_super = get Template.of_string ini section "force_super";
 }
 
 let attribution_of_inifile ini section =
   let attr_of_string s =
     let i = String.index s '=' in
-    (String.sub s 0 i, String.sub s (i + 1) (String.length s - i - 1))
+    let n = String.length s in
+    let tmpl = Template.of_string (String.sub s (i + 1) (n - i - 1)) in
+    (String.sub s 0 i, tmpl)
   in
   {
-    source = get_string ini section "source";
+    source = get Template.of_string ini section "source";
     replace = get_list attr_of_string ini section "replace";
   }
 
@@ -200,12 +203,12 @@ let literal_mapping_of_inifile ini section =
   let input = get_string ini section "input" in
   let mapping = get_literal_mapping ini section "case" in
   let passthrough = get_bool ini section "passthrough" in
-  Map_literal (mapping, input, passthrough)
+  Map_literal (mapping, Template.of_string input, passthrough)
 
 let regexp_mapping_of_inifile ini section =
   let input = get_string ini section "input" in
   let re, mapping = get_regexp_mapping ini section "case" in
-  Map_regexp (re, mapping, input)
+  Map_regexp (re, mapping, Template.of_string input)
 
 let ldap_attribute_of_inifile ini section =
   let ldap_attribute_type = get_string ini section "ldap_attribute_type" in
