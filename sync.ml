@@ -21,6 +21,7 @@ open Printf
 open Subsocia_common
 open Subsocia_connection
 open Unprime_list
+open Unprime_option
 
 module SASL = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
 
@@ -198,10 +199,10 @@ let process_target config ldap_conn (target_name, target) =
     Lwt_preemptive.detach
       (Netldap.search ldap_conn
         ~base:target.ldap_base_dn
-        ~scope:`Sub
+        ~scope:target.ldap_scope
         ~deref_aliases:`Always
-        ~size_limit:10 (* FIXME *)
-        ~time_limit:10 (* FIXME *)
+        ~size_limit:(Option.get_or 0 target.ldap_size_limit)
+        ~time_limit:(Option.get_or 0 target.ldap_time_limit)
         ~types_only:false
         ~filter
         ~attributes:target.ldap_attributes)
