@@ -1,4 +1,4 @@
-(* subsocia-sync-ldap - Synchonizing LDAP to Subsocia
+(* subsocia-sync-ldap - LDAP to Subsocia Synchronization
  * Copyright (C) 2017  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,6 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
+
+(** Supplements to [Netldap]. *)
 
 val scope_of_string : string -> Netldap.scope
 val string_of_scope : Netldap.scope -> string

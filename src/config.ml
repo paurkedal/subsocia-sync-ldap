@@ -1,4 +1,4 @@
-(* subsocia-sync-ldap - Synchonizing LDAP to Subsocia
+(* subsocia-sync-ldap - LDAP to Subsocia Synchronization
  * Copyright (C) 2017  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
