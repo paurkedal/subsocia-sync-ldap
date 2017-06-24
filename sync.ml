@@ -146,6 +146,7 @@ let process_attribution config lentry target_entity attribution =
     Lwt_log.info_f "- %s %s ↦ %s" atn
       (Values.to_json_string vt old_values)
       (Values.to_json_string vt values) >>
+    if not config.commit then Lwt.return_unit else
     Entity.set_values at values source_entity target_entity
   in
   Lwt_list.iter_s replace attribution.replace
@@ -165,12 +166,20 @@ let process_inclusion config lentry target_entity inclusion =
   let fsup_paths = List.map Subsocia_selector.selector_of_string fsup_paths in
   let%lwt fsup_entities = Lwt_list.filter_map_s select_or_warn fsup_paths in
   let force_super super_entity =
-    if%lwt not =|< Entity.is_sub target_entity super_entity then
+    if%lwt not =|< Entity.is_sub target_entity super_entity then begin
       let%lwt super_name = Entity.display_name super_entity in
       Lwt_log.info_f "≼ %s" super_name >>
+      if not config.commit then Lwt.return_unit else
       Entity.force_dsub target_entity super_entity
+    end
   in
   Lwt_list.iter_s force_super fsup_entities
+
+let update_entity config lentry target target_entity =
+  Lwt_list.iter_s (process_attribution config lentry target_entity)
+    target.attributions >>
+  Lwt_list.iter_s (process_inclusion config lentry target_entity)
+    target.inclusions
 
 let process_entry config target target_type = function
  | `Reference _ -> assert false
@@ -178,19 +187,15 @@ let process_entry config target target_type = function
     let target_path_str = expand_single config lentry target.entity_path in
     let target_path = Subsocia_selector.selector_of_string target_path_str in
     Lwt_log.debug_f "Processing %s => %s" dn target_path_str >>
-    let%lwt target_entity =
-      (match%lwt Entity.select_opt target_path with
-       | None ->
-          Lwt_log.info_f "N %s ↦ %s" dn target_path_str >>
-          create_entity target_path target_type
-       | Some target_entity ->
-          Lwt_log.info_f "U %s ↦ %s" dn target_path_str >>
-          Lwt.return target_entity)
-    in
-    Lwt_list.iter_s (process_attribution config lentry target_entity)
-      target.attributions >>
-    Lwt_list.iter_s (process_inclusion config lentry target_entity)
-      target.inclusions
+    (match%lwt Entity.select_opt target_path with
+     | None ->
+        Lwt_log.info_f "N %s ↦ %s" dn target_path_str >>
+        if not config.commit then Lwt.return_unit else
+        create_entity target_path target_type >>=
+        update_entity config lentry target
+     | Some target_entity ->
+        Lwt_log.info_f "U %s ↦ %s" dn target_path_str >>
+        update_entity config lentry target target_entity)
 
 let process_target config ldap_conn (target_name, target) =
   let filter = target.ldap_filter in
@@ -229,7 +234,7 @@ let process config =
 
 (* Main *)
 
-let main config_file =
+let main config_file commit =
   let ini =
     try new Inifiles.inifile config_file with
      | Inifiles.Ini_parse_error (line, file) ->
@@ -237,13 +242,21 @@ let main config_file =
         exit 65
   in
   let config = Config.of_inifile ini in
+  let config =
+    (match commit with None -> config | Some commit -> {config with commit})
+  in
   process config
 
 let main_cmd =
   let open Cmdliner in
   let config =
     Arg.(required @@ pos 0 (some file) None @@ info ~docv:"CONFIG" []) in
-  let term = Term.(const main $ config) in
+  let commit =
+    let doc =
+      "Whether to commit the changes to the subsocia database. \
+       The defaut value is specified in the configuration file." in
+    Arg.(value @@ opt (some bool) None @@ info ~doc ["commit"]) in
+  let term = Term.(const main $ config $ commit) in
   let info = Term.info "subsocia-sync-ldap" in
   (term, info)
 
