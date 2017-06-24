@@ -169,6 +169,11 @@ let scope_of_string = function
  | "sub" | "subtree" -> `Sub
  | noscope -> failwith ("Invalid LDAP scope " ^ noscope)
 
+let string_of_scope = function
+ | `Base -> "base"
+ | `One -> "one"
+ | `Sub -> "sub"
+
 (* Config from .ini *)
 
 let target_of_inifile ini section = {

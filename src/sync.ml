@@ -199,6 +199,9 @@ let process_entry config target target_type = function
 
 let process_target config ldap_conn (target_name, target) =
   let filter = target.ldap_filter in
+  Lwt_log.info_f "LDAP base: %s" target.ldap_base_dn >>
+  Lwt_log.info_f "LDAP scope: %s" (string_of_scope target.ldap_scope) >>
+  Lwt_log.info_f "LDAP filter: %s" (Netldapx_filter.to_string filter) >>
   let%lwt target_type = Entity_type.required target.entity_type in
   let%lwt lr =
     Lwt_preemptive.detach
