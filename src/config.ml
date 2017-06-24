@@ -57,6 +57,7 @@ type t = {
   ldap_uri: Uri.t;
   ldap_sasl_dn: string;
   ldap_sasl_user: string;
+  ldap_filters: ldap_filter list; (* conjuncted with target filters *)
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;
   bindings: extract Dict.t;
@@ -222,6 +223,8 @@ let of_inifile ini =
     ldap_uri = get_uri ini "connection" "ldap_uri";
     ldap_sasl_dn = get_string ini "connection" "ldap_sasl_dn";
     ldap_sasl_user = get_string ini "connection" "ldap_sasl_user";
+    ldap_filters =
+      get_list Netldapx.filter_of_string ini "connection" "ldap_filter";
     subsocia_db_uri = get_uri ini "connection" "ldap_uri";
     bindings = Dict.empty;
     targets = Dict.empty;

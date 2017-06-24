@@ -198,7 +198,12 @@ let process_entry config target target_type = function
         update_entity config lentry target target_entity)
 
 let process_target config ldap_conn (target_name, target) =
-  let filter = target.ldap_filter in
+  let filter =
+    (match config.ldap_filters, target.ldap_filter with
+     | [], tfilter -> tfilter
+     | cfilters, `And tfilters -> `And (tfilters @ cfilters)
+     | cfilters, tfilter -> `And (tfilter :: cfilters))
+  in
   Lwt_log.info_f "LDAP base: %s" target.ldap_base_dn >>
   Lwt_log.info_f "LDAP scope: %s" (Netldapx.string_of_scope target.ldap_scope)>>
   Lwt_log.info_f "LDAP filter: %s" (Netldapx.string_of_filter filter) >>
@@ -237,7 +242,7 @@ let process config =
 
 (* Main *)
 
-let main config_file commit =
+let main config_file commit filters =
   let ini =
     try new Inifiles.inifile config_file with
      | Inifiles.Ini_parse_error (line, file) ->
@@ -248,10 +253,25 @@ let main config_file commit =
   let config =
     (match commit with None -> config | Some commit -> {config with commit})
   in
+  let config = {config with ldap_filters = config.ldap_filters @ filters} in
   process config
 
+module Arg = struct
+  include Cmdliner.Arg
+
+  let ldap_filter =
+    let parse s =
+      try `Ok (Netldapx.filter_of_string s) with
+       | Ldap_filter.Invalid_filter (pos, msg) ->
+          `Error (sprintf "At char %d: %s" pos msg) in
+    let print ppf z =
+      Format.pp_print_string ppf (Netldapx.string_of_filter z) in
+    (parse, print)
+end
+
+module Term = Cmdliner.Term
+
 let main_cmd =
-  let open Cmdliner in
   let config =
     Arg.(required @@ pos 0 (some file) None @@ info ~docv:"CONFIG" []) in
   let commit =
@@ -259,7 +279,11 @@ let main_cmd =
       "Whether to commit the changes to the subsocia database. \
        The defaut value is specified in the configuration file." in
     Arg.(value @@ opt (some bool) None @@ info ~doc ["commit"]) in
-  let term = Term.(const main $ config $ commit) in
+  let filter =
+    let docv = "FILTER" in
+    let doc = "Conjunct the LDAP filter collected this far with FILTER." in
+    Arg.(value @@ opt_all ldap_filter [] @@ info ~doc ~docv ["filter"]) in
+  let term = Term.(const main $ config $ commit $ filter) in
   let info = Term.info "subsocia-sync-ldap" in
   (term, info)
 
