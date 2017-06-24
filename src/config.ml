@@ -18,7 +18,6 @@
 open Unprime_option
 module Dict = Map.Make (String)
 
-type variable = string
 type ldap_attribute_type = string
 type ldap_dn = string
 type ldap_filter = Netldap.filter
@@ -42,7 +41,7 @@ type attribution = {
 type target = {
   ldap_base_dn: ldap_dn;
   ldap_scope: Netldap.scope;
-  ldap_filter: ldap_filter;
+  ldap_filter: Netldap.filter;
   ldap_attributes: string list;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
@@ -56,7 +55,7 @@ type t = {
   ldap_uri: Uri.t;
   ldap_sasl_dn: string;
   ldap_sasl_user: string;
-  ldap_filters: ldap_filter list; (* conjuncted with target filters *)
+  ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;
   bindings: extract Dict.t;
