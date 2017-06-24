@@ -10,11 +10,17 @@ build: [["jbuilder" "build" "-p" name "-j" jobs]]
 build-test: [["jbuilder" "runtest" "-p" name "-j" jobs]]
 
 depends: [
+  "angstrom"
   "cmdliner"
+  "conf-gssapi"
   "jbuilder" {build}
   "lwt"
   "ocaml-inifiles"
+  "ocamldap"
+  "ocamlnet"
   "ppx_compose" {build}
+  "ppx_regexp" {build}
+  "re"
   "subsocia"
   "topkg" {build}
   "topkg-jbuilder" {build}
