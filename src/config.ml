@@ -25,7 +25,7 @@ type ldap_filter = Netldap.filter
 type extract =
   | Ldap_attribute of ldap_attribute_type
   | Map_literal of string Dict.t * Template.t * bool
-  | Map_regexp of Re.re * (Re.Mark.t * Template.t) list * Template.t
+  | Map_regexp of Re.re * (Re.Mark.t * int * Template.t) list * Template.t
   [@@deriving show]
 
 type inclusion = {
@@ -150,12 +150,16 @@ let mapping_of_string =
 let get_mapping conv ini section var =
   get_list (mapping_of_string conv) ini section var
 
+let pcre_group_count =
+  let re = Re_pcre.regexp {q|\([^?]|q} in
+  fun k -> List.length (Re.all re k) - 1
+
 let get_regexp_mapping ini section var =
   let rms =
     get_mapping
       (fun (k, v) ->
         let (mark, re) = Re.mark (Re_pcre.re k) in
-        (re, (mark, Template.of_string v)))
+        (re, (mark, pcre_group_count k, Template.of_string v)))
       ini section var
   in
   (Re.compile (Re.alt (List.map fst rms)), List.map snd rms)

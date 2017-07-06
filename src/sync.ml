@@ -54,17 +54,29 @@ let connect config =
   Netldap.conn_bind ldap_conn bind_creds;
   ldap_conn
 
+let selector_of_string s =
+  (try Subsocia_selector.selector_of_string s with
+   | Invalid_argument _ -> failwith_f "Invalid selector %s." s)
+
 (* Template and Variable Expansion *)
 
 let route_regexp re mapping x =
   (match Re.exec_opt re x with
-   | None -> Template.literal x
+   | None -> None
    | Some g ->
-      let rec loop = function
+      let rec loop group_count = function
        | [] -> assert false
-       | (mark, y) :: mapping -> if Re.Mark.test g mark then y else loop mapping
+       | (mark, ng, y) :: mapping ->
+          let lookup var =
+            (try Some (Re.Group.get g (int_of_string var - group_count)) with
+             | Not_found ->
+                failwith_f "Reference to unmatched group in %s."
+                           (Template.to_string y)
+             | Failure _ -> None) in
+          if Re.Mark.test g mark then Template.partial_expand lookup y else
+          loop (group_count + ng) mapping
       in
-      loop mapping)
+      Some (loop 0 mapping))
 
 let rec lookup_multi cfg lentry var =
   (match Dict.find var cfg.bindings with
@@ -80,8 +92,8 @@ let rec lookup_multi cfg lentry var =
         |> List.fmap (fun x -> try Some (Dict.find x d) with Not_found -> None)
    | Map_regexp (re, mapping, tmpl) ->
       expand_multi cfg lentry tmpl
-        |> List.map (expand_multi cfg lentry % route_regexp re mapping)
-        |> List.flatten)
+        |> List.fmap (route_regexp re mapping)
+        |> List.flatten_map (expand_multi cfg lentry))
 
 and lookup_single cfg lentry ~tmpl var =
   (match lookup_multi cfg lentry var with
@@ -128,7 +140,7 @@ let create_entity target_path target_type =
 
 let process_attribution config lentry target_entity attribution =
   let source_path_str = expand_single config lentry attribution.source in
-  let source_path = Subsocia_selector.selector_of_string source_path_str in
+  let source_path = selector_of_string source_path_str in
   let%lwt source_entity = Entity.select_one source_path in
   let replace (atn, tmpl) =
     Lwt_log.debug_f "R %s" atn >>
@@ -160,7 +172,7 @@ let select_or_warn sel =
 let process_inclusion config lentry target_entity inclusion =
   (* TODO: inclusion.relax_super *)
   let fsup_paths = expand_multi config lentry inclusion.force_super in
-  let fsup_paths = List.map Subsocia_selector.selector_of_string fsup_paths in
+  let fsup_paths = List.map selector_of_string fsup_paths in
   let%lwt fsup_entities = Lwt_list.filter_map_s select_or_warn fsup_paths in
   let force_super super_entity =
     if%lwt not =|< Entity.is_sub target_entity super_entity then begin
@@ -182,7 +194,7 @@ let process_entry config target target_type = function
  | `Reference _ -> assert false
  | `Entry ((dn, _) as lentry) ->
     let target_path_str = expand_single config lentry target.entity_path in
-    let target_path = Subsocia_selector.selector_of_string target_path_str in
+    let target_path = selector_of_string target_path_str in
     Lwt_log.debug_f "Processing %s => %s" dn target_path_str >>
     (match%lwt Entity.select_opt target_path with
      | None ->

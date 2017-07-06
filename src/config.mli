@@ -26,7 +26,7 @@ type ldap_filter = Netldap.filter
 type extract =
   | Ldap_attribute of ldap_attribute_type
   | Map_literal of string Dict.t * Template.t * bool
-  | Map_regexp of Re.re * (Re.Mark.t * Template.t) list * Template.t
+  | Map_regexp of Re.re * (Re.Mark.t * int * Template.t) list * Template.t
   [@@deriving show]
 
 type inclusion = {

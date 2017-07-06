@@ -34,6 +34,13 @@ let of_string =
 let to_string =
   String.concat "" % List.map (function L s -> s | V var -> "${"^var^"}")
 
+let partial_expand lookup =
+  let expand_frag = function
+   | L s -> L s
+   | V var -> (match lookup var with None -> V var | Some s -> L s)
+  in
+  List.map expand_frag
+
 let expand lookup =
   let expand_frag = function L s -> s | V var -> lookup var in
   String.concat "" % List.map expand_frag
