@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+open Unprime
 open Unprime_option
 module Dict = Map.Make (String)
 
@@ -101,33 +102,30 @@ let add_binding variable extract cfg =
 
 (* Inifile Getters and Parsers *)
 
-let get conv ini section var =
+let get ?default conv ini section var =
   try conv (ini#getval section var) with
-   | Inifiles.Invalid_element _ ->
-      error_f "Missing required setting %s in section %s." var section
-   | Inifiles.Invalid_section _ ->
-      error_f "Missing required section %s." section
+   | Inifiles.Invalid_element _ | Inifiles.Invalid_section _ ->
+      (match default with
+       | Some default ->
+          default
+       | None ->
+          error_f "Missing required setting %s in section %s." var section)
    | Invalid_argument _ | Failure _ ->
       error_f "Invalid value for %s in section %s." var section
 
-let get_opt conv ini section var =
+let get_opt ?default conv ini section var =
   try Some (conv (ini#getval section var)) with
    | Inifiles.Invalid_element _ | Inifiles.Invalid_section _ ->
-      None
+      default
    | Invalid_argument _ | Failure _ ->
       error_f "Invalid value for %s in section %s." var section
 
-let get_list conv ini section var =
+let get_list ?(default = []) conv ini section var =
   try List.map conv (ini#getaval section var) with
    | Inifiles.Invalid_element _ | Inifiles.Invalid_section _ ->
-      []
+      default
    | Invalid_argument _ | Failure _ | Not_found ->
       error_f "Invalid value for %s in section %s." var section
-
-let get_bool ini = get bool_of_string ini
-let get_string ini = get (fun x -> x) ini
-let get_string_opt ini = get_opt (fun x -> x) ini
-let get_uri ini = get Uri.of_string ini
 
 let mapping_parser =
   let open Angstrom in
@@ -171,7 +169,7 @@ let get_literal_mapping ini section var =
 (* Config from .ini *)
 
 let target_of_inifile ini section = {
-  ldap_base_dn = get_string ini section "ldap_base_dn";
+  ldap_base_dn = get ident ini section "ldap_base_dn";
   ldap_scope =
     Option.get_or `Sub
       (get_opt Netldapx.scope_of_string ini section "ldap_scope");
@@ -179,7 +177,7 @@ let target_of_inifile ini section = {
   ldap_attributes = get_list (fun s -> s) ini section "ldap_attribute";
   ldap_size_limit = get_opt int_of_string ini section "ldap_size_limit";
   ldap_time_limit = get_opt int_of_string ini section "ldap_time_limit";
-  entity_type = get_string ini section "entity_type";
+  entity_type = get ident ini section "entity_type";
   entity_path = get Template.of_string ini section "entity_path";
   inclusions = [];
   attributions = [];
@@ -203,22 +201,22 @@ let attribution_of_inifile ini section =
   }
 
 let literal_mapping_of_inifile ini section =
-  let input = get_string ini section "input" in
+  let input = get ident ini section "input" in
   let mapping = get_literal_mapping ini section "case" in
-  let passthrough = get_bool ini section "passthrough" in
+  let passthrough = get bool_of_string ini section "passthrough" in
   Map_literal (mapping, Template.of_string input, passthrough)
 
 let regexp_mapping_of_inifile ini section =
-  let input = get_string ini section "input" in
+  let input = get ident ini section "input" in
   let re, mapping = get_regexp_mapping ini section "case" in
   Map_regexp (re, mapping, Template.of_string input)
 
 let ldap_attribute_of_inifile ini section =
-  let ldap_attribute_type = get_string ini section "ldap_attribute_type" in
+  let ldap_attribute_type = get ident ini section "ldap_attribute_type" in
   Ldap_attribute ldap_attribute_type
 
 let extract_of_inifile ini section =
-  (match get_string ini section "method" with
+  (match get ident ini section "method" with
    | "mapping" -> literal_mapping_of_inifile ini section
    | "regexp" -> regexp_mapping_of_inifile ini section
    | "ldap_attribute" -> ldap_attribute_of_inifile ini section
@@ -226,12 +224,12 @@ let extract_of_inifile ini section =
 
 let of_inifile ini =
   let cfg = {
-    ldap_uri = get_uri ini "connection" "ldap_uri";
-    ldap_sasl_dn = get_string ini "connection" "ldap_sasl_dn";
-    ldap_sasl_user = get_string ini "connection" "ldap_sasl_user";
+    ldap_uri = get Uri.of_string ini "connection" "ldap_uri";
+    ldap_sasl_dn = get ident ini "connection" "ldap_sasl_dn";
+    ldap_sasl_user = get ident ini "connection" "ldap_sasl_user";
     ldap_filters =
       get_list Netldapx.filter_of_string ini "connection" "ldap_filter";
-    subsocia_db_uri = get_uri ini "connection" "ldap_uri";
+    subsocia_db_uri = get Uri.of_string ini "connection" "ldap_uri";
     bindings = Dict.empty;
     targets = Dict.empty;
     commit = get bool_of_string ini "connection" "commit";
