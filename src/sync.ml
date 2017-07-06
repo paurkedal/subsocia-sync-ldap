@@ -78,25 +78,37 @@ let route_regexp re mapping x =
       in
       Some (loop 0 mapping))
 
-let rec lookup_multi cfg lentry var =
-  (match Dict.find var cfg.bindings with
-   | exception Not_found ->
-      failwith_f "Undefined variable %s." var
-   | Ldap_attribute at ->
-      (try List.assoc at (snd lentry) with Not_found -> [])
-   | Map_literal (d, tmpl, true) ->
-      expand_multi cfg lentry tmpl
-        |> List.map (fun x -> try Dict.find x d with Not_found -> x)
-   | Map_literal (d, tmpl, false) ->
-      expand_multi cfg lentry tmpl
-        |> List.fmap (fun x -> try Some (Dict.find x d) with Not_found -> None)
-   | Map_regexp (re, mapping, tmpl) ->
-      expand_multi cfg lentry tmpl
-        |> List.fmap (route_regexp re mapping)
-        |> List.flatten_map (expand_multi cfg lentry))
+let rec lookup_multi cfg ?lentry var =
+  (match String.split_on_char ':' var with
+   | ["env"; var] ->
+      (try [Unix.getenv var] with | Not_found -> [])
+   | ["var"; var] | [var] ->
+      (match Dict.find var cfg.bindings with
+       | exception Not_found ->
+          failwith_f "Undefined variable %s." var
+       | Ldap_attribute at ->
+          (match lentry with
+           | Some lentry ->
+              (try List.assoc at (snd lentry) with Not_found -> [])
+           | None ->
+              failwith_f "LDAP lookups like %s are only valid in target \
+                          contexts." var)
+       | Map_literal (d, tmpl, true) ->
+          expand_multi cfg ?lentry tmpl
+            |> List.map (fun x -> try Dict.find x d with Not_found -> x)
+       | Map_literal (d, tmpl, false) ->
+          expand_multi cfg ?lentry tmpl
+            |> List.fmap
+                (fun x -> try Some (Dict.find x d) with Not_found -> None)
+       | Map_regexp (re, mapping, tmpl) ->
+          expand_multi cfg ?lentry tmpl
+            |> List.fmap (route_regexp re mapping)
+            |> List.flatten_map (expand_multi cfg ?lentry))
+   | _ ->
+      failwith_f "Invalid variable form %s." var)
 
-and lookup_single cfg lentry ~tmpl var =
-  (match lookup_multi cfg lentry var with
+and lookup_single cfg ?lentry ~tmpl var =
+  (match lookup_multi cfg ?lentry var with
    | [x] -> x
    | [] ->
       failwith_f "Cannot substitute undefined %s into %S."
@@ -105,13 +117,13 @@ and lookup_single cfg lentry ~tmpl var =
       failwith_f "Cannot substitute multi-valued %s into %S."
                  var (Template.to_string tmpl))
 
-and expand_multi cfg lentry tmpl =
+and expand_multi cfg ?lentry tmpl =
   Template.expand_fold
-    (fun var f -> List.fold f (lookup_multi cfg lentry var))
+    (fun var f -> List.fold f (lookup_multi cfg ?lentry var))
     List.cons tmpl []
 
-and expand_single cfg lentry tmpl =
-  Template.expand (lookup_single cfg lentry ~tmpl) tmpl
+and expand_single cfg ?lentry tmpl =
+  Template.expand (lookup_single cfg ?lentry ~tmpl) tmpl
 
 (* Target Processing *)
 
@@ -139,14 +151,14 @@ let create_entity target_path target_type =
   >|= fun () -> entity
 
 let process_attribution config lentry target_entity attribution =
-  let source_path_str = expand_single config lentry attribution.source in
+  let source_path_str = expand_single config ~lentry attribution.source in
   let source_path = selector_of_string source_path_str in
   let%lwt source_entity = Entity.select_one source_path in
   let replace (atn, tmpl) =
     Lwt_log.debug_f "R %s" atn >>
     let%lwt Attribute_type.Ex at = Attribute_type.required atn in
     let vt = Attribute_type.value_type at in
-    let values_str = expand_multi config lentry tmpl in
+    let values_str = expand_multi config ~lentry tmpl in
     let values = List.map (Value.typed_of_string vt) values_str in
     let values = Values.of_elements vt values in
     let%lwt old_values = Entity.get_values at source_entity target_entity in
@@ -171,7 +183,7 @@ let select_or_warn sel =
 
 let process_inclusion config lentry target_entity inclusion =
   (* TODO: inclusion.relax_super *)
-  let fsup_paths = expand_multi config lentry inclusion.force_super in
+  let fsup_paths = expand_multi config ~lentry inclusion.force_super in
   let fsup_paths = List.map selector_of_string fsup_paths in
   let%lwt fsup_entities = Lwt_list.filter_map_s select_or_warn fsup_paths in
   let force_super super_entity =
@@ -193,7 +205,7 @@ let update_entity config lentry target target_entity =
 let process_entry config target target_type = function
  | `Reference _ -> assert false
  | `Entry ((dn, _) as lentry) ->
-    let target_path_str = expand_single config lentry target.entity_path in
+    let target_path_str = expand_single config ~lentry target.entity_path in
     let target_path = selector_of_string target_path_str in
     Lwt_log.debug_f "Processing %s => %s" dn target_path_str >>
     (match%lwt Entity.select_opt target_path with
