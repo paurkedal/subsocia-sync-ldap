@@ -61,6 +61,7 @@ type t = {
   targets: target Dict.t;
   bindings: extract Dict.t;
   commit: bool;
+  commit_log: Template.t option;
 } [@@deriving show]
 
 exception Error of string

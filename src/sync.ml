@@ -275,6 +275,14 @@ let main config_file commit filters =
     (match commit with None -> config | Some commit -> {config with commit})
   in
   let config = {config with ldap_filters = config.ldap_filters @ filters} in
+  let%lwt () =
+    (match config.commit, config.commit_log with
+     | false, _ | true, None -> Lwt.return_unit
+     | true, Some file_name_tmpl ->
+        let file_name = expand_single config file_name_tmpl in
+        let%lwt logger = Lwt_log.file ~mode:`Append ~file_name () in
+        Lwt_log.default := Lwt_log.broadcast [logger; !Lwt_log.default];
+        Lwt.return_unit) in
   process config
 
 module Arg = struct

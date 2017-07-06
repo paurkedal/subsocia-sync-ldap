@@ -61,6 +61,7 @@ type t = {
   targets: target Dict.t;
   bindings: extract Dict.t;
   commit: bool;
+  commit_log: Template.t option;
 } [@@deriving show]
 
 exception Error of string
@@ -233,6 +234,7 @@ let of_inifile ini =
     bindings = Dict.empty;
     targets = Dict.empty;
     commit = get bool_of_string ini "connection" "commit";
+    commit_log = get_opt Template.of_string ini "connection" "commit_log";
   } in
   let process_target_section cfg section =
     (match String.split_on_char ':' section with
