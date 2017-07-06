@@ -225,8 +225,8 @@ let extract_of_inifile ini section =
 let of_inifile ini =
   let cfg = {
     ldap_uri = get Uri.of_string ini "connection" "ldap_uri";
-    ldap_sasl_dn = get ident ini "connection" "ldap_sasl_dn";
-    ldap_sasl_user = get ident ini "connection" "ldap_sasl_user";
+    ldap_sasl_dn = get ~default:"" ident ini "connection" "ldap_sasl_dn";
+    ldap_sasl_user = get ~default:"" ident ini "connection" "ldap_sasl_user";
     ldap_filters =
       get_list Netldapx.filter_of_string ini "connection" "ldap_filter";
     subsocia_db_uri = get Uri.of_string ini "connection" "ldap_uri";
