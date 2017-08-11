@@ -68,7 +68,7 @@ let route_regexp re mapping x =
        | [] -> assert false
        | (mark, ng, y) :: mapping ->
           let lookup var =
-            (try Some (Re.Group.get g (int_of_string var - group_count)) with
+            (try Some (Re.Group.get g (group_count + int_of_string var)) with
              | Not_found ->
                 failwith_f "Reference to unmatched group in %s."
                            (Template.to_string y)
