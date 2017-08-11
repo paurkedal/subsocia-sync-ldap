@@ -50,7 +50,7 @@ type target = {
 type scope = {
   ldap_base_dn: ldap_dn;
   ldap_scope: Netldap.scope;
-  ldap_filter: Netldap.filter;
+  ldap_filters: Netldap.filter list;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   target_name: string;

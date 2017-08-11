@@ -157,10 +157,11 @@ let process_scope config ldap_conn scope_name =
   let scope = Dict.find scope_name config.scopes in
   let target = Dict.find scope.target_name config.targets in
   let filter =
-    (match config.ldap_filters, scope.ldap_filter with
-     | [], tfilter -> tfilter
-     | cfilters, `And tfilters -> `And (tfilters @ cfilters)
-     | cfilters, tfilter -> `And (tfilter :: cfilters))
+    (match config.ldap_filters, scope.ldap_filters with
+     | [], [] -> failwith "No LDAP filter provided."
+     | [], sfilters -> `And sfilters
+     | cfilters, [] -> `And cfilters
+     | cfilters, tfilters -> `And (tfilters @ cfilters))
   in
   Lwt_log.info_f "LDAP base: %s" scope.ldap_base_dn >>
   Lwt_log.info_f "LDAP scope: %s" (Netldapx.string_of_scope scope.ldap_scope)>>

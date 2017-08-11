@@ -50,7 +50,7 @@ type target = {
 type scope = {
   ldap_base_dn: ldap_dn;
   ldap_scope: Netldap.scope;
-  ldap_filter: Netldap.filter;
+  ldap_filters: Netldap.filter list;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   target_name: string;
@@ -233,7 +233,7 @@ let scope_of_inifile ini section = {
   ldap_scope =
     Option.get_or `Sub
       (get_opt Netldapx.scope_of_string ini section "ldap_scope");
-  ldap_filter = get Netldapx.filter_of_string ini section "ldap_filter";
+  ldap_filters = get_list Netldapx.filter_of_string ini section "ldap_filter";
   ldap_size_limit = get_opt int_of_string ini section "ldap_size_limit";
   ldap_time_limit = get_opt int_of_string ini section "ldap_time_limit";
   target_name = get ident ini section "target";
