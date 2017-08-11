@@ -40,16 +40,20 @@ type attribution = {
 } [@@deriving show]
 
 type target = {
-  ldap_base_dn: ldap_dn;
-  ldap_scope: Netldap.scope;
-  ldap_filter: Netldap.filter;
   ldap_attributes: string list;
-  ldap_size_limit: int option;
-  ldap_time_limit: int option;
   entity_type: string;
   entity_path: Template.t;
   inclusions: inclusion list;
   attributions: attribution list;
+} [@@deriving show]
+
+type scope = {
+  ldap_base_dn: ldap_dn;
+  ldap_scope: Netldap.scope;
+  ldap_filter: Netldap.filter;
+  ldap_size_limit: int option;
+  ldap_time_limit: int option;
+  target_name: string;
 } [@@deriving show]
 
 type t = {
@@ -59,6 +63,7 @@ type t = {
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;
+  scopes: scope Dict.t;
   bindings: extract Dict.t;
   commit: bool;
   commit_log: Template.t option;
@@ -72,9 +77,16 @@ let error_f fmt = Printf.ksprintf (fun msg -> raise (Error msg)) fmt
 
 let add_target target_name target cfg =
   if Dict.mem target_name cfg.targets then
-    error_f "Target %s is already defined." target_name
-  else
-    {cfg with targets = Dict.add target_name target cfg.targets}
+    error_f "Target %s is already defined." target_name else
+  {cfg with targets = Dict.add target_name target cfg.targets}
+
+let add_scope scope_name scope cfg =
+  if Dict.mem scope_name cfg.scopes then
+    error_f "Scope %s is already defined." scope_name else
+  if not (Dict.mem scope.target_name cfg.targets) then
+    error_f "Scope %s refers to undefined target %s."
+            scope_name scope.target_name else
+  {cfg with scopes = Dict.add scope_name scope cfg.scopes}
 
 let add_attribution target_name attribution_name attribution cfg =
   try
@@ -170,14 +182,7 @@ let get_literal_mapping ini section var =
 (* Config from .ini *)
 
 let target_of_inifile ini section = {
-  ldap_base_dn = get ident ini section "ldap_base_dn";
-  ldap_scope =
-    Option.get_or `Sub
-      (get_opt Netldapx.scope_of_string ini section "ldap_scope");
-  ldap_filter = get Netldapx.filter_of_string ini section "ldap_filter";
   ldap_attributes = get_list (fun s -> s) ini section "ldap_attribute";
-  ldap_size_limit = get_opt int_of_string ini section "ldap_size_limit";
-  ldap_time_limit = get_opt int_of_string ini section "ldap_time_limit";
   entity_type = get ident ini section "entity_type";
   entity_path = get Template.of_string ini section "entity_path";
   inclusions = [];
@@ -223,6 +228,17 @@ let extract_of_inifile ini section =
    | "ldap_attribute" -> ldap_attribute_of_inifile ini section
    | meth -> error_f "Invalid variable method %s." meth)
 
+let scope_of_inifile ini section = {
+  ldap_base_dn = get ident ini section "ldap_base_dn";
+  ldap_scope =
+    Option.get_or `Sub
+      (get_opt Netldapx.scope_of_string ini section "ldap_scope");
+  ldap_filter = get Netldapx.filter_of_string ini section "ldap_filter";
+  ldap_size_limit = get_opt int_of_string ini section "ldap_size_limit";
+  ldap_time_limit = get_opt int_of_string ini section "ldap_time_limit";
+  target_name = get ident ini section "target";
+}
+
 let of_inifile ini =
   let cfg = {
     ldap_uri = get Uri.of_string ini "connection" "ldap_uri";
@@ -233,6 +249,7 @@ let of_inifile ini =
     subsocia_db_uri = get Uri.of_string ini "connection" "ldap_uri";
     bindings = Dict.empty;
     targets = Dict.empty;
+    scopes = Dict.empty;
     commit = get bool_of_string ini "connection" "commit";
     commit_log = get_opt Template.of_string ini "connection" "commit_log";
   } in
@@ -253,6 +270,8 @@ let of_inifile ini =
           (attribution_of_inifile ini section) cfg
      | ["var"; variable] ->
         add_binding variable (extract_of_inifile ini section) cfg
+     | ["scope"; variable] ->
+        add_scope variable (scope_of_inifile ini section) cfg
      | ["target"; _] | ["connection"] -> cfg
      | _ -> error_f "Unexpected section %s." section)
   in

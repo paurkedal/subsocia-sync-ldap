@@ -19,7 +19,9 @@ open Printf
 open Subsocia_sync_ldap
 open   Config
 
-let main config_file commit filters =
+let failwith_f fmt = ksprintf failwith fmt
+
+let main config_file scopes commit filters =
   let ini =
     try new Inifiles.inifile config_file with
      | Inifiles.Ini_parse_error (line, file) ->
@@ -31,6 +33,11 @@ let main config_file commit filters =
     (match commit with None -> config | Some commit -> {config with commit})
   in
   let config = {config with ldap_filters = config.ldap_filters @ filters} in
+  let missing_scopes =
+    List.filter (fun name -> not (Dict.mem name config.scopes)) scopes in
+  if missing_scopes <> [] then
+    failwith_f "The requested scope %s is not defined in %s."
+               (String.concat ", " missing_scopes) config_file;
   let%lwt () =
     (match config.commit, config.commit_log with
      | false, _ | true, None -> Lwt.return_unit
@@ -39,7 +46,7 @@ let main config_file commit filters =
         let%lwt logger = Lwt_log.file ~mode:`Append ~file_name () in
         Lwt_log.default := Lwt_log.broadcast [logger; !Lwt_log.default];
         Lwt.return_unit) in
-  Sync.process config
+  Sync.process config ~scopes
 
 module Arg = struct
   include Cmdliner.Arg
@@ -64,11 +71,15 @@ let main_cmd =
       "Whether to commit the changes to the subsocia database. \
        The defaut value is specified in the configuration file." in
     Arg.(value @@ opt (some bool) None @@ info ~doc ["commit"]) in
+  let scope =
+    let docv = "SCOPE" in
+    let doc = "Process the given scope instead of default." in
+    Arg.(value @@ opt_all string ["default"] @@ info ~doc ~docv ["scope"]) in
   let filter =
     let docv = "FILTER" in
     let doc = "Conjunct the LDAP filter collected this far with FILTER." in
     Arg.(value @@ opt_all ldap_filter [] @@ info ~doc ~docv ["filter"]) in
-  let term = Term.(const main $ config $ commit $ filter) in
+  let term = Term.(const main $ config $ scope $ commit $ filter) in
   let info = Term.info "subsocia-sync-ldap" in
   (term, info)
 

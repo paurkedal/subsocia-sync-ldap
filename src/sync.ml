@@ -153,25 +153,27 @@ let process_entry config target target_type = function
         Lwt_log.info_f "U %s ↦ %s" dn target_path_str >>
         update_entity config lentry target target_entity)
 
-let process_target config ldap_conn (target_name, target) =
+let process_scope config ldap_conn scope_name =
+  let scope = Dict.find scope_name config.scopes in
+  let target = Dict.find scope.target_name config.targets in
   let filter =
-    (match config.ldap_filters, target.ldap_filter with
+    (match config.ldap_filters, scope.ldap_filter with
      | [], tfilter -> tfilter
      | cfilters, `And tfilters -> `And (tfilters @ cfilters)
      | cfilters, tfilter -> `And (tfilter :: cfilters))
   in
-  Lwt_log.info_f "LDAP base: %s" target.ldap_base_dn >>
-  Lwt_log.info_f "LDAP scope: %s" (Netldapx.string_of_scope target.ldap_scope)>>
+  Lwt_log.info_f "LDAP base: %s" scope.ldap_base_dn >>
+  Lwt_log.info_f "LDAP scope: %s" (Netldapx.string_of_scope scope.ldap_scope)>>
   Lwt_log.info_f "LDAP filter: %s" (Netldapx.string_of_filter filter) >>
   let%lwt target_type = Entity_type.required target.entity_type in
   let%lwt lr =
     Lwt_preemptive.detach
       (Netldap.search ldap_conn
-        ~base:target.ldap_base_dn
-        ~scope:target.ldap_scope
+        ~base:scope.ldap_base_dn
+        ~scope:scope.ldap_scope
         ~deref_aliases:`Always
-        ~size_limit:(Option.get_or 0 target.ldap_size_limit)
-        ~time_limit:(Option.get_or 0 target.ldap_time_limit)
+        ~size_limit:(Option.get_or 0 scope.ldap_size_limit)
+        ~time_limit:(Option.get_or 0 scope.ldap_time_limit)
         ~types_only:false
         ~filter
         ~attributes:target.ldap_attributes)
@@ -187,11 +189,10 @@ let process_target config ldap_conn (target_name, target) =
       Lwt_log.warning_f "Result is incomplete due to size limit." >>
       Lwt_list.iter_s (process_entry config target target_type) lr#partial_value
    | _ ->
-      Lwt_log.error_f "LDAP search for target %s failed: %s"
-        target_name lr#diag_msg)
+      Lwt_log.error_f "LDAP search for scope %s failed: %s"
+        scope_name lr#diag_msg)
 
-let process config =
+let process config ~scopes =
   let%lwt ldap_conn = Lwt_preemptive.detach connect config in
-  Lwt_list.iter_s (process_target config ldap_conn)
-                  (Dict.bindings config.targets) >>
+  Lwt_list.iter_s (process_scope config ldap_conn) scopes >>
   Lwt_log.info "Done."

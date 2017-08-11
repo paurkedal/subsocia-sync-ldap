@@ -17,4 +17,4 @@
 
 (** Synchronizer *)
 
-val process : Config.t -> unit Lwt.t
+val process : Config.t -> scopes: string list -> unit Lwt.t

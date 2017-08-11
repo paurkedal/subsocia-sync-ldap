@@ -40,17 +40,21 @@ type attribution = {
 } [@@deriving show]
 
 type target = {
-  ldap_base_dn: ldap_dn;
-  ldap_scope: Netldap.scope;
-  ldap_filter: Netldap.filter;
   ldap_attributes: string list;
-  ldap_size_limit: int option;
-  ldap_time_limit: int option;
   entity_type: string;
   entity_path: Template.t;
   inclusions: inclusion list;
   attributions: attribution list;
 } [@@deriving show]
+
+type scope = {
+  ldap_base_dn: ldap_dn;
+  ldap_scope: Netldap.scope;
+  ldap_filter: Netldap.filter;
+  ldap_size_limit: int option;
+  ldap_time_limit: int option;
+  target_name: string;
+}
 
 type t = {
   ldap_uri: Uri.t;
@@ -59,6 +63,7 @@ type t = {
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;
+  scopes: scope Dict.t;
   bindings: extract Dict.t;
   commit: bool;
   commit_log: Template.t option;
