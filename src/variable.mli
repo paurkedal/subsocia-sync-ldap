@@ -1,4 +1,4 @@
-(* subsocia-sync-ldap - LDAP to Subsocia Synchronization
+(* subsocia-sync-ldap - Synchonizing LDAP to Subsocia
  * Copyright (C) 2017  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,12 +15,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-(** Supplements to [Netldap]. *)
+(** Template and Variable Expansion *)
 
-val scope_of_string : string -> Netldap.scope
-val string_of_scope : Netldap.scope -> string
+val expand_multi :
+  Config.t -> ?lentry: Netldapx.ldap_entry -> Template.t -> string list
 
-val filter_of_string : string -> Netldap.filter
-val string_of_filter : Netldap.filter -> string
-
-type ldap_entry = string * (string * string list) list
+val expand_single :
+  Config.t -> ?lentry: Netldapx.ldap_entry -> Template.t -> string

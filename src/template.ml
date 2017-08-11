@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+open Compose (* TODO: Remove when we can assume lwt >= 3.0.0. *)
+
 type var = string
 
 type frag =

@@ -77,3 +77,5 @@ let rec ocamldapfilter_of_filter = function
 
 let filter_of_string s = filter_of_ocamldapfilter (Ldap_filter.of_string s)
 let string_of_filter z = Ldap_filter.to_string (ocamldapfilter_of_filter z)
+
+type ldap_entry = string * (string * string list) list

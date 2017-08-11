@@ -1,13 +1,13 @@
 (jbuild_version 1)
 
-(executable
- ((name sync)
-  (modules (Config Netldapx Sync Template))
+(library
+ ((name subsocia_sync_ldap)
+  (modules (Config Netldapx Sync Template Variable))
   (flags (-thread -ppx ppx_lwt))
   (preprocess (pps (ppx_compose ppx_regexp)))
   (libraries
    (angstrom
-    cmdliner
+    ppx_compose.runtime
     inifiles
     ldap
     lwt lwt.preemptive
@@ -15,6 +15,11 @@
     re.pcre
     subsocia subsocia.data))))
 
+(executable
+ ((name main)
+  (flags (-thread -ppx ppx_lwt))
+  (libraries (cmdliner subsocia_sync_ldap))))
+
 (install
  ((section bin)
-  (files ((sync.exe as subsocia-sync-ldap)))))
+  (files ((main.exe as subsocia-sync-ldap)))))
