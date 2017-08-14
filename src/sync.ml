@@ -83,7 +83,7 @@ let create_entity target_path target_type =
       Entity.set_values at values pfx_entity entity) aconj
   >|= fun () -> entity
 
-let process_attribution config lentry target_entity attribution =
+let process_attribution ~log_header config lentry target_entity attribution =
   let source_path_str =
     Variable.expand_single config ~lentry attribution.source in
   let source_path = selector_of_string source_path_str in
@@ -98,6 +98,7 @@ let process_attribution config lentry target_entity attribution =
     let%lwt old_values = Entity.get_values at source_entity target_entity in
     if Values.elements values = Values.elements old_values then
       Lwt.return_unit else
+    Lazy.force log_header >>
     Lwt_log.info_f "- %s %s ↦ %s" atn
       (Values.to_json_string vt old_values)
       (Values.to_json_string vt values) >>
@@ -115,7 +116,7 @@ let select_or_warn sel =
    | Some ent ->
       Lwt.return_some ent)
 
-let process_inclusion config lentry target_entity inclusion =
+let process_inclusion ~log_header config lentry target_entity inclusion =
   (* TODO: inclusion.relax_super *)
   let fsup_paths = Variable.expand_multi config ~lentry inclusion.force_super in
   let fsup_paths = List.map selector_of_string fsup_paths in
@@ -123,6 +124,7 @@ let process_inclusion config lentry target_entity inclusion =
   let force_super super_entity =
     if%lwt not =|< Entity.is_sub target_entity super_entity then begin
       let%lwt super_name = Entity.display_name super_entity in
+      Lazy.force log_header >>
       Lwt_log.info_f "≼ %s" super_name >>
       if not config.commit then Lwt.return_unit else
       Entity.force_dsub target_entity super_entity
@@ -130,10 +132,11 @@ let process_inclusion config lentry target_entity inclusion =
   in
   Lwt_list.iter_s force_super fsup_entities
 
-let update_entity config lentry target target_entity =
-  Lwt_list.iter_s (process_attribution config lentry target_entity)
+let update_entity ?(log_header = lazy Lwt.return_unit)
+                  config lentry target target_entity =
+  Lwt_list.iter_s (process_attribution ~log_header config lentry target_entity)
     target.attributions >>
-  Lwt_list.iter_s (process_inclusion config lentry target_entity)
+  Lwt_list.iter_s (process_inclusion ~log_header config lentry target_entity)
     target.inclusions
 
 let process_entry config target target_type = function
@@ -150,8 +153,8 @@ let process_entry config target target_type = function
         create_entity target_path target_type >>=
         update_entity config lentry target
      | Some target_entity ->
-        Lwt_log.info_f "U %s ↦ %s" dn target_path_str >>
-        update_entity config lentry target target_entity)
+        let log_header = lazy (Lwt_log.info_f "U %s ↦ %s" dn target_path_str) in
+        update_entity ~log_header config lentry target target_entity)
 
 let process_scope config ldap_conn scope_name =
   let scope = Dict.find scope_name config.scopes in
