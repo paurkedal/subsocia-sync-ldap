@@ -53,6 +53,7 @@ type scope = {
   ldap_filters: Netldap.filter list;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
+  partial_is_ok: bool;
   target_name: string;
 } [@@deriving show]
 
@@ -236,6 +237,8 @@ let scope_of_inifile ini section = {
   ldap_filters = get_list Netldapx.filter_of_string ini section "ldap_filter";
   ldap_size_limit = get_opt int_of_string ini section "ldap_size_limit";
   ldap_time_limit = get_opt int_of_string ini section "ldap_time_limit";
+  partial_is_ok =
+    get ~default:false bool_of_string ini section "partial_is_ok";
   target_name = get ident ini section "target";
 }
 

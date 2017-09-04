@@ -53,6 +53,7 @@ type scope = {
   ldap_filters: Netldap.filter list;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
+  partial_is_ok: bool;
   target_name: string;
 }
 

@@ -45,7 +45,9 @@ let main config_file scopes commit filters =
         let%lwt logger = Lwt_log.file ~mode:`Append ~file_name () in
         Lwt_log.default := Lwt_log.broadcast [logger; !Lwt_log.default];
         Lwt.return_unit) in
-  Sync.process config ~scopes
+  (match%lwt Sync.process config ~scopes with
+   | Ok () -> Lwt.return 0
+   | Error _ -> Lwt.return 69)
 
 module Arg = struct
   include Cmdliner.Arg
@@ -84,6 +86,6 @@ let main_cmd =
 
 let () =
   (match Cmdliner.Term.eval main_cmd with
-   | `Ok m -> Lwt_main.run m
+   | `Ok m -> exit (Lwt_main.run m)
    | `Error _ -> exit 64
    | `Help | `Version -> exit 0)

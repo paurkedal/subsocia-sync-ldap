@@ -187,18 +187,44 @@ let process_scope config ldap_conn scope_name =
   in
   (match lr#code with
    | `Success ->
-      Lwt_list.iter_s (process_entry config target target_type) lr#value
+      Lwt_list.iter_s (process_entry config target target_type) lr#value >>
+      Lwt.return_none
    | `TimeLimitExceeded ->
-      Lwt_log.warning_f "Result is incomplete due to time limit." >>
-      Lwt_list.iter_s (process_entry config target target_type) lr#partial_value
+      Lwt_log.error_f "Result for %s is incomplete due to time limit."
+                      scope_name >>= fun () ->
+      begin
+        if not scope.Config.partial_is_ok then Lwt.return_unit else
+        Lwt_list.iter_s (process_entry config target target_type)
+                        lr#partial_value
+      end >>
+      Lwt.return_some (scope_name, `Time_limit_exceeded)
    | `SizeLimitExceeded ->
-      Lwt_log.warning_f "Result is incomplete due to size limit." >>
-      Lwt_list.iter_s (process_entry config target target_type) lr#partial_value
+      Lwt_log.error_f "Result for %s is incomplete due to size limit."
+                      scope_name >>= fun () ->
+      begin
+        if not scope.Config.partial_is_ok then Lwt.return_unit else
+        Lwt_list.iter_s (process_entry config target target_type)
+                        lr#partial_value
+      end >>
+      Lwt.return_some (scope_name, `Size_limit_exceeded)
    | _ ->
       Lwt_log.error_f "LDAP search for scope %s failed: %s"
-        scope_name lr#diag_msg)
+                      scope_name lr#diag_msg >>
+      Lwt.return_some (scope_name, `Search_failed))
+
+type scope_error =
+ [ `Search_failed
+ | `Time_limit_exceeded
+ | `Size_limit_exceeded ]
+
+type error = (string * scope_error) list
 
 let process config ~scopes =
   let%lwt ldap_conn = Lwt_preemptive.detach connect config in
-  Lwt_list.iter_s (process_scope config ldap_conn) scopes >>
-  Lwt_log.info "Done."
+  (match%lwt Lwt_list.filter_map_s (process_scope config ldap_conn) scopes with
+   | [] ->
+      Lwt_log.info "Completed with no errors." >>
+      Lwt.return (Ok ())
+   | scope_errors ->
+      Lwt_log.error_f "%d scopes failed." (List.length scope_errors) >>
+      Lwt.return (Error scope_errors))

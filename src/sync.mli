@@ -17,4 +17,11 @@
 
 (** Synchronizer *)
 
-val process : Config.t -> scopes: string list -> unit Lwt.t
+type scope_error =
+ [ `Search_failed
+ | `Time_limit_exceeded
+ | `Size_limit_exceeded ]
+
+type error = (string * scope_error) list
+
+val process : Config.t -> scopes: string list -> (unit, error) result Lwt.t
