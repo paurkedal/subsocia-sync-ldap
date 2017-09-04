@@ -29,9 +29,7 @@ let main config_file scopes commit filters =
         exit 65
   in
   let config = Config.of_inifile ini in
-  let config =
-    (match commit with None -> config | Some commit -> {config with commit})
-  in
+  let config = if commit then {config with commit = true} else config in
   let config = {config with ldap_filters = config.ldap_filters @ filters} in
   let missing_scopes =
     List.filter (fun name -> not (Dict.mem name config.scopes)) scopes in
@@ -70,7 +68,7 @@ let main_cmd =
     let doc =
       "Whether to commit the changes to the subsocia database. \
        The defaut value is specified in the configuration file." in
-    Arg.(value @@ opt (some bool) None @@ info ~doc ["commit"]) in
+    Arg.(value @@ flag @@ info ~doc ["commit"]) in
   let scope =
     let docv = "SCOPE" in
     let doc = "Process the given scope instead of default." in
