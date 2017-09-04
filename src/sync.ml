@@ -15,7 +15,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-open Config
 open Lwt.Infix
 open Printf
 open Subsocia_common
@@ -23,14 +22,15 @@ open Subsocia_connection
 open Unprime_list
 open Unprime_option
 
+module Dict = Config.Dict
 module SASL = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
 
 let failwith_f fmt = ksprintf failwith fmt
 
 let connect config =
-  Lwt_log.ign_info_f "Connecting to %s." (Uri.to_string config.ldap_uri);
+  Lwt_log.ign_info_f "Connecting to %s." (Uri.to_string config.Config.ldap_uri);
   let ldap_server, ldap_host =
-    let uri = config.ldap_uri in
+    let uri = config.Config.ldap_uri in
     (match Uri.scheme uri, Uri.host uri with
      | (Some "ldap" | None), Some host ->
         let port = match Uri.port uri with Some port -> port | None -> 389 in
@@ -41,11 +41,11 @@ let connect config =
         failwith "Missing host name in LDAP uri.")
   in
   let ldap_conn = Netldap.connect ldap_server in
-  Lwt_log.ign_info_f "Binding as %s." config.ldap_sasl_dn;
+  Lwt_log.ign_info_f "Binding as %s." config.Config.ldap_sasl_dn;
   let bind_creds =
     Netldap.sasl_bind_creds
-      ~dn:config.ldap_sasl_dn
-      ~user:config.ldap_sasl_user
+      ~dn:config.Config.ldap_sasl_dn
+      ~user:config.Config.ldap_sasl_user
       ~authz:""
       ~creds:[]
       ~params:["gssapi-acceptor", ("ldap@" ^ ldap_host), false]
@@ -85,7 +85,7 @@ let create_entity target_path target_type =
 
 let process_attribution ~log_header config lentry target_entity attribution =
   let source_path_str =
-    Variable.expand_single config ~lentry attribution.source in
+    Variable.expand_single config ~lentry attribution.Config.source in
   let source_path = selector_of_string source_path_str in
   let%lwt source_entity = Entity.select_one source_path in
   let replace (atn, tmpl) =
@@ -102,10 +102,10 @@ let process_attribution ~log_header config lentry target_entity attribution =
     Lwt_log.info_f "- %s %s ↦ %s" atn
       (Values.to_json_string vt old_values)
       (Values.to_json_string vt values) >>
-    if not config.commit then Lwt.return_unit else
+    if not config.Config.commit then Lwt.return_unit else
     Entity.set_values at values source_entity target_entity
   in
-  Lwt_list.iter_s replace attribution.replace
+  Lwt_list.iter_s replace attribution.Config.replace
 
 let select_or_warn sel =
   (match%lwt Entity.select_opt sel with
@@ -118,7 +118,8 @@ let select_or_warn sel =
 
 let process_inclusion ~log_header config lentry target_entity inclusion =
   (* TODO: inclusion.relax_super *)
-  let fsup_paths = Variable.expand_multi config ~lentry inclusion.force_super in
+  let fsup_paths =
+    Variable.expand_multi config ~lentry inclusion.Config.force_super in
   let fsup_paths = List.map selector_of_string fsup_paths in
   let%lwt fsup_entities = Lwt_list.filter_map_s select_or_warn fsup_paths in
   let force_super super_entity =
@@ -126,7 +127,7 @@ let process_inclusion ~log_header config lentry target_entity inclusion =
       let%lwt super_name = Entity.display_name super_entity in
       Lazy.force log_header >>
       Lwt_log.info_f "≼ %s" super_name >>
-      if not config.commit then Lwt.return_unit else
+      if not config.Config.commit then Lwt.return_unit else
       Entity.force_dsub target_entity super_entity
     end
   in
@@ -135,21 +136,21 @@ let process_inclusion ~log_header config lentry target_entity inclusion =
 let update_entity ?(log_header = lazy Lwt.return_unit)
                   config lentry target target_entity =
   Lwt_list.iter_s (process_attribution ~log_header config lentry target_entity)
-    target.attributions >>
+    target.Config.attributions >>
   Lwt_list.iter_s (process_inclusion ~log_header config lentry target_entity)
-    target.inclusions
+    target.Config.inclusions
 
 let process_entry config target target_type = function
  | `Reference _ -> assert false
  | `Entry ((dn, _) as lentry) ->
     let target_path_str =
-      Variable.expand_single config ~lentry target.entity_path in
+      Variable.expand_single config ~lentry target.Config.entity_path in
     let target_path = selector_of_string target_path_str in
     Lwt_log.debug_f "Processing %s => %s" dn target_path_str >>
     (match%lwt Entity.select_opt target_path with
      | None ->
         Lwt_log.info_f "N %s ↦ %s" dn target_path_str >>
-        if not config.commit then Lwt.return_unit else
+        if not config.Config.commit then Lwt.return_unit else
         create_entity target_path target_type >>=
         update_entity config lentry target
      | Some target_entity ->
@@ -157,30 +158,31 @@ let process_entry config target target_type = function
         update_entity ~log_header config lentry target target_entity)
 
 let process_scope config ldap_conn scope_name =
-  let scope = Dict.find scope_name config.scopes in
-  let target = Dict.find scope.target_name config.targets in
+  let scope = Dict.find scope_name config.Config.scopes in
+  let target = Dict.find scope.Config.target_name config.Config.targets in
   let filter =
-    (match config.ldap_filters, scope.ldap_filters with
+    (match config.Config.ldap_filters, scope.Config.ldap_filters with
      | [], [] -> failwith "No LDAP filter provided."
      | [], sfilters -> `And sfilters
      | cfilters, [] -> `And cfilters
      | cfilters, tfilters -> `And (tfilters @ cfilters))
   in
-  Lwt_log.info_f "LDAP base: %s" scope.ldap_base_dn >>
-  Lwt_log.info_f "LDAP scope: %s" (Netldapx.string_of_scope scope.ldap_scope)>>
+  Lwt_log.info_f "LDAP base: %s" scope.Config.ldap_base_dn >>
+  Lwt_log.info_f "LDAP scope: %s"
+                 (Netldapx.string_of_scope scope.Config.ldap_scope)>>
   Lwt_log.info_f "LDAP filter: %s" (Netldapx.string_of_filter filter) >>
-  let%lwt target_type = Entity_type.required target.entity_type in
+  let%lwt target_type = Entity_type.required target.Config.entity_type in
   let%lwt lr =
     Lwt_preemptive.detach
       (Netldap.search ldap_conn
-        ~base:scope.ldap_base_dn
-        ~scope:scope.ldap_scope
+        ~base:scope.Config.ldap_base_dn
+        ~scope:scope.Config.ldap_scope
         ~deref_aliases:`Always
-        ~size_limit:(Option.get_or 0 scope.ldap_size_limit)
-        ~time_limit:(Option.get_or 0 scope.ldap_time_limit)
+        ~size_limit:(Option.get_or 0 scope.Config.ldap_size_limit)
+        ~time_limit:(Option.get_or 0 scope.Config.ldap_time_limit)
         ~types_only:false
         ~filter
-        ~attributes:target.ldap_attributes)
+        ~attributes:target.Config.ldap_attributes)
       ()
   in
   (match lr#code with

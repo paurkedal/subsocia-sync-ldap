@@ -17,7 +17,6 @@
 
 open Printf
 open Subsocia_sync_ldap
-open   Config
 
 let failwith_f fmt = ksprintf failwith fmt
 
@@ -29,15 +28,17 @@ let main config_file scopes commit filters =
         exit 65
   in
   let config = Config.of_inifile ini in
-  let config = if commit then {config with commit = true} else config in
-  let config = {config with ldap_filters = config.ldap_filters @ filters} in
+  let config = if commit then Config.{config with commit = true} else config in
+  let config =
+    Config.{config with ldap_filters = config.ldap_filters @ filters} in
   let missing_scopes =
-    List.filter (fun name -> not (Dict.mem name config.scopes)) scopes in
+    List.filter (fun name -> not (Config.Dict.mem name config.Config.scopes))
+                scopes in
   if missing_scopes <> [] then
     failwith_f "The requested scope %s is not defined in %s."
                (String.concat ", " missing_scopes) config_file;
   let%lwt () =
-    (match config.commit, config.commit_log with
+    (match config.Config.commit, config.Config.commit_log with
      | false, _ | true, None -> Lwt.return_unit
      | true, Some file_name_tmpl ->
         let file_name = Variable.expand_single config file_name_tmpl in
