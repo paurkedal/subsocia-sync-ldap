@@ -155,7 +155,7 @@ let mapping_parser =
 
 let mapping_of_string =
   fun conv input ->
-    (match Angstrom.parse_only mapping_parser (`String input) with
+    (match Angstrom.parse_string mapping_parser input with
      | Ok m -> conv m
      | Error msg -> invalid_arg msg)
 
