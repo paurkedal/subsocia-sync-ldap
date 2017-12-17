@@ -22,6 +22,4 @@ depends: [
   "ppx_regexp" {build}
   "re"
   "subsocia"
-  "topkg" {build}
-  "topkg-jbuilder" {build}
 ]
