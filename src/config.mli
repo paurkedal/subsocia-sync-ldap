@@ -55,12 +55,17 @@ type scope = {
   ldap_time_limit: int option;
   partial_is_ok: bool;
   target_name: string;
-}
+} [@@deriving show]
+
+type ldap_bind =
+  | Ldap_bind_anon
+  | Ldap_bind_simple of {dn: string; password: string}
+  | Ldap_bind_sasl_gssapi
+  [@@deriving show]
 
 type t = {
   ldap_uri: Uri.t;
-  ldap_sasl_dn: string;
-  ldap_sasl_user: string;
+  ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;

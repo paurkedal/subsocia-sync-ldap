@@ -23,7 +23,7 @@ open Unprime_list
 open Unprime_option
 
 module Dict = Config.Dict
-module SASL = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
+module Sasl_mech_krb5 = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
 
 let failwith_f fmt = ksprintf failwith fmt
 
@@ -41,16 +41,24 @@ let connect config =
         failwith "Missing host name in LDAP uri.")
   in
   let ldap_conn = Netldap.connect ldap_server in
-  Lwt_log.ign_info_f "Binding as %s." config.Config.ldap_sasl_dn;
+
   let bind_creds =
-    Netldap.sasl_bind_creds
-      ~dn:config.Config.ldap_sasl_dn
-      ~user:config.Config.ldap_sasl_user
-      ~authz:""
-      ~creds:[]
-      ~params:["gssapi-acceptor", ("ldap@" ^ ldap_host), false]
-      (module SASL)
-  in
+    (match config.Config.ldap_bind with
+     | Config.Ldap_bind_anon ->
+        Lwt_log.ign_info "Binding anonymously.";
+        Netldap.anon_bind_creds
+     | Config.Ldap_bind_simple {dn; password = pw} ->
+        Lwt_log.ign_info_f "Binding as %s." dn;
+        Netldap.simple_bind_creds ~dn ~pw
+     | Config.Ldap_bind_sasl_gssapi ->
+        Lwt_log.ign_info "Binding with GSSAPI.";
+        Netldap.sasl_bind_creds
+          ~dn:""
+          ~user:""
+          ~authz:""
+          ~creds:[]
+          ~params:["gssapi-acceptor", ("ldap@" ^ ldap_host), false]
+          (module Sasl_mech_krb5)) in
   Netldap.conn_bind ldap_conn bind_creds;
   ldap_conn
 

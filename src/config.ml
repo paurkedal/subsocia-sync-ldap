@@ -57,10 +57,15 @@ type scope = {
   target_name: string;
 } [@@deriving show]
 
+type ldap_bind =
+  | Ldap_bind_anon
+  | Ldap_bind_simple of {dn: string; password: string}
+  | Ldap_bind_sasl_gssapi
+  [@@deriving show]
+
 type t = {
   ldap_uri: Uri.t;
-  ldap_sasl_dn: string;
-  ldap_sasl_user: string;
+  ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;
@@ -243,10 +248,23 @@ let scope_of_inifile ini section = {
 }
 
 let of_inifile ini =
+  let ldap_bind =
+    (match get_opt ident ini "connection" "ldap_sasl_mech",
+           get_opt ident ini "connection" "ldap_bind_dn" with
+     | None, None -> Ldap_bind_anon
+     | None, Some dn ->
+        let password =
+          get ~default:"" ident ini "connection" "ldap_bind_password" in
+        Ldap_bind_simple {dn; password}
+     | Some "gssapi", None ->
+        Ldap_bind_sasl_gssapi
+     | Some "gssapi", Some _ ->
+        error_f "Choosing the bind DN is unsupported for GSSAPI."
+     | Some mech, _ ->
+        error_f "Unsupported SASL mechanism %s." mech) in
   let cfg = {
     ldap_uri = get Uri.of_string ini "connection" "ldap_uri";
-    ldap_sasl_dn = get ~default:"" ident ini "connection" "ldap_sasl_dn";
-    ldap_sasl_user = get ~default:"" ident ini "connection" "ldap_sasl_user";
+    ldap_bind;
     ldap_filters =
       get_list Netldapx.filter_of_string ini "connection" "ldap_filter";
     subsocia_db_uri = get Uri.of_string ini "connection" "ldap_uri";
