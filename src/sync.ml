@@ -125,11 +125,11 @@ let select_or_warn sel =
       Lwt.return_some ent)
 
 let process_inclusion ~log_header config lentry target_entity inclusion =
-  (* TODO: inclusion.relax_super *)
-  let fsup_paths =
+  let force_paths =
     Variable.expand_multi config ~lentry inclusion.Config.force_super in
-  let fsup_paths = List.map selector_of_string fsup_paths in
-  let%lwt fsup_entities = Lwt_list.filter_map_s select_or_warn fsup_paths in
+  let force_paths = List.map selector_of_string force_paths in
+  let%lwt force_entities = Lwt_list.filter_map_s select_or_warn force_paths in
+
   let force_super super_entity =
     if%lwt not =|< Entity.is_sub target_entity super_entity then begin
       let%lwt super_name = Entity.display_name super_entity in
@@ -137,9 +137,28 @@ let process_inclusion ~log_header config lentry target_entity inclusion =
       Lwt_log.info_f "≼ %s" super_name >>
       if not config.Config.commit then Lwt.return_unit else
       Entity.force_dsub target_entity super_entity
-    end
-  in
-  Lwt_list.iter_s force_super fsup_entities
+    end in
+
+  let relax_super super_entity =
+    if%lwt Entity.is_sub target_entity super_entity then begin
+      let%lwt super_name = Entity.display_name super_entity in
+      Lazy.force log_header >>
+      Lwt_log.info_f "⋠ %s" super_name >>
+      if not config.Config.commit then Lwt.return_unit else
+      Entity.relax_dsub target_entity super_entity
+    end in
+
+  Lwt_list.iter_s force_super force_entities >>= fun () ->
+  (match inclusion.Config.relax_super with
+   | None -> Lwt.return_unit
+   | Some relax_paths ->
+      let relax_paths = Variable.expand_multi config ~lentry relax_paths in
+      let relax_paths = List.map selector_of_string relax_paths in
+      let%lwt relax_entities = Lwt_list.map_s Entity.select relax_paths in
+      let relax_entities = Entity.Set.empty
+        |> List.fold Entity.Set.union relax_entities
+        |> List.fold Entity.Set.remove force_entities in
+      Entity.Set.iter_s relax_super relax_entities)
 
 let update_entity ?(log_header = lazy Lwt.return_unit)
                   config lentry target target_entity =
