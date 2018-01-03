@@ -1,9 +1,9 @@
 opam-version: "1.2"
 authors: ["Petter A. Urkedal"]
-maintainer: ["urkedal@nbi.dk"]
-homepage: "https://wiki.nbi.ku.dk/evbudget"
+maintainer: "Petter A. Urkedal <urkedal@nbi.dk>"
+homepage: "https://github.com/paurkedal/subsocia-sync-ldap"
 bug-reports: "mailto:nimbus-support@nbi.ku.dk"
-dev-repo: "gitolite3@git.nbi.ku.dk:subsocia-sync-ldap.git"
+dev-repo: "https://github.com/paurkedal/subsocia-sync-ldap.git"
 license: "GPL-3"
 
 build: [["jbuilder" "build" "-p" name "-j" jobs]]
