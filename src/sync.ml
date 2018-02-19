@@ -34,7 +34,9 @@ let connect config =
     (match Uri.scheme uri, Uri.host uri with
      | (Some "ldap" | None), Some host ->
         let port = match Uri.port uri with Some port -> port | None -> 389 in
-        Netldap.ldap_server (`Inet_byname (host, port)), host
+        let ssymb = `Inet_byname (host, port) in
+        let timeout = config.Config.ldap_timeout in
+        (Netldap.ldap_server ?timeout ssymb, host)
      | Some scheme, _ ->
         failwith_f "Unsupported protocol %s." scheme
      | _, None ->

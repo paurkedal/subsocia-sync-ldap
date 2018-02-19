@@ -67,6 +67,7 @@ type t = {
   ldap_uri: Uri.t;
   ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
+  ldap_timeout: float option;
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;
   scopes: scope Dict.t;
