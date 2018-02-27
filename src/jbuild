@@ -17,8 +17,9 @@
 
 (executable
  ((name main)
+  (modules (Main))
   (flags (-thread -ppx ppx_lwt))
-  (libraries (cmdliner subsocia_sync_ldap))))
+  (libraries (cmdliner caqti-dynload subsocia_sync_ldap))))
 
 (install
  ((section bin)
