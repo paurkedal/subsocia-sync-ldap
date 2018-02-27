@@ -3,8 +3,8 @@
 (library
  ((name subsocia_sync_ldap)
   (modules (Config Netldapx Sync Template Variable))
-  (flags (-thread -ppx ppx_lwt))
-  (preprocess (pps (ppx_compose ppx_regexp)))
+  (flags (-thread))
+  (preprocess (pps (ppx_compose lwt_ppx ppx_regexp)))
   (libraries
    (angstrom
     ppx_compose.runtime
@@ -17,7 +17,9 @@
 
 (executable
  ((name main)
-  (flags (-thread -ppx ppx_lwt))
+  (modules (Main))
+  (flags (-thread))
+  (preprocess (pps (lwt_ppx)))
   (libraries (cmdliner subsocia_sync_ldap))))
 
 (install

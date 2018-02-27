@@ -99,7 +99,7 @@ let process_attribution ~log_header config lentry target_entity attribution =
   let source_path = selector_of_string source_path_str in
   let%lwt source_entity = Entity.select_one source_path in
   let replace (atn, tmpl) =
-    Lwt_log.debug_f "R %s" atn >>
+    Lwt_log.debug_f "R %s" atn >>= fun () ->
     let%lwt Attribute_type.Ex at = Attribute_type.required atn in
     let vt = Attribute_type.value_type at in
     let values_str = Variable.expand_multi config ~lentry tmpl in
@@ -108,10 +108,10 @@ let process_attribution ~log_header config lentry target_entity attribution =
     let%lwt old_values = Entity.get_values at source_entity target_entity in
     if Values.elements values = Values.elements old_values then
       Lwt.return_unit else
-    Lazy.force log_header >>
+    Lazy.force log_header >>= fun () ->
     Lwt_log.info_f "- %s %s ↦ %s" atn
       (Values.to_json_string vt old_values)
-      (Values.to_json_string vt values) >>
+      (Values.to_json_string vt values) >>= fun () ->
     if not config.Config.commit then Lwt.return_unit else
     Entity.set_values at values source_entity target_entity
   in
@@ -121,7 +121,7 @@ let select_or_warn sel =
   (match%lwt Entity.select_opt sel with
    | None ->
       Lwt_log.warning_f "Cannot find %s."
-        (Subsocia_selector.string_of_selector sel) >>
+        (Subsocia_selector.string_of_selector sel) >>= fun () ->
       Lwt.return_none
    | Some ent ->
       Lwt.return_some ent)
@@ -135,8 +135,8 @@ let process_inclusion ~log_header config lentry target_entity inclusion =
   let force_super super_entity =
     if%lwt not =|< Entity.is_sub target_entity super_entity then begin
       let%lwt super_name = Entity.display_name super_entity in
-      Lazy.force log_header >>
-      Lwt_log.info_f "≼ %s" super_name >>
+      Lazy.force log_header >>= fun () ->
+      Lwt_log.info_f "≼ %s" super_name >>= fun () ->
       if not config.Config.commit then Lwt.return_unit else
       Entity.force_dsub target_entity super_entity
     end in
@@ -144,8 +144,8 @@ let process_inclusion ~log_header config lentry target_entity inclusion =
   let relax_super super_entity =
     if%lwt Entity.is_sub target_entity super_entity then begin
       let%lwt super_name = Entity.display_name super_entity in
-      Lazy.force log_header >>
-      Lwt_log.info_f "⋠ %s" super_name >>
+      Lazy.force log_header >>= fun () ->
+      Lwt_log.info_f "⋠ %s" super_name >>= fun () ->
       if not config.Config.commit then Lwt.return_unit else
       Entity.relax_dsub target_entity super_entity
     end in
@@ -165,7 +165,7 @@ let process_inclusion ~log_header config lentry target_entity inclusion =
 let update_entity ?(log_header = lazy Lwt.return_unit)
                   config lentry target target_entity =
   Lwt_list.iter_s (process_attribution ~log_header config lentry target_entity)
-    target.Config.attributions >>
+    target.Config.attributions >>= fun () ->
   Lwt_list.iter_s (process_inclusion ~log_header config lentry target_entity)
     target.Config.inclusions
 
@@ -175,10 +175,10 @@ let process_entry config target target_type = function
     let target_path_str =
       Variable.expand_single config ~lentry target.Config.entity_path in
     let target_path = selector_of_string target_path_str in
-    Lwt_log.debug_f "Processing %s => %s" dn target_path_str >>
+    Lwt_log.debug_f "Processing %s => %s" dn target_path_str >>= fun () ->
     (match%lwt Entity.select_opt target_path with
      | None ->
-        Lwt_log.info_f "N %s ↦ %s" dn target_path_str >>
+        Lwt_log.info_f "N %s ↦ %s" dn target_path_str >>= fun () ->
         if not config.Config.commit then Lwt.return_unit else
         create_entity target_path target_type >>=
         update_entity config lentry target
@@ -196,10 +196,12 @@ let process_scope config ldap_conn scope_name =
      | cfilters, [] -> `And cfilters
      | cfilters, tfilters -> `And (tfilters @ cfilters))
   in
-  Lwt_log.info_f "LDAP base: %s" scope.Config.ldap_base_dn >>
+  Lwt_log.info_f "LDAP base: %s" scope.Config.ldap_base_dn >>= fun () ->
   Lwt_log.info_f "LDAP scope: %s"
-                 (Netldapx.string_of_scope scope.Config.ldap_scope)>>
-  Lwt_log.info_f "LDAP filter: %s" (Netldapx.string_of_filter filter) >>
+                 (Netldapx.string_of_scope scope.Config.ldap_scope)
+    >>= fun () ->
+  Lwt_log.info_f "LDAP filter: %s" (Netldapx.string_of_filter filter)
+    >>= fun () ->
   let%lwt target_type = Entity_type.required target.Config.entity_type in
   let%lwt lr =
     Lwt_preemptive.detach
@@ -216,7 +218,8 @@ let process_scope config ldap_conn scope_name =
   in
   (match lr#code with
    | `Success ->
-      Lwt_list.iter_s (process_entry config target target_type) lr#value >>
+      Lwt_list.iter_s (process_entry config target target_type) lr#value
+        >>= fun () ->
       Lwt.return_none
    | `TimeLimitExceeded ->
       Lwt_log.error_f "Result for %s is incomplete due to time limit."
@@ -225,7 +228,7 @@ let process_scope config ldap_conn scope_name =
         if not scope.Config.partial_is_ok then Lwt.return_unit else
         Lwt_list.iter_s (process_entry config target target_type)
                         lr#partial_value
-      end >>
+      end >>= fun () ->
       Lwt.return_some (scope_name, `Time_limit_exceeded)
    | `SizeLimitExceeded ->
       Lwt_log.error_f "Result for %s is incomplete due to size limit."
@@ -234,11 +237,11 @@ let process_scope config ldap_conn scope_name =
         if not scope.Config.partial_is_ok then Lwt.return_unit else
         Lwt_list.iter_s (process_entry config target target_type)
                         lr#partial_value
-      end >>
+      end >>= fun () ->
       Lwt.return_some (scope_name, `Size_limit_exceeded)
    | _ ->
       Lwt_log.error_f "LDAP search for scope %s failed: %s"
-                      scope_name lr#diag_msg >>
+                      scope_name lr#diag_msg >>= fun () ->
       Lwt.return_some (scope_name, `Search_failed))
 
 type scope_error =
@@ -252,8 +255,9 @@ let process config ~scopes =
   let%lwt ldap_conn = Lwt_preemptive.detach connect config in
   (match%lwt Lwt_list.filter_map_s (process_scope config ldap_conn) scopes with
    | [] ->
-      Lwt_log.info "Completed with no errors." >>
+      Lwt_log.info "Completed with no errors." >>= fun () ->
       Lwt.return (Ok ())
    | scope_errors ->
-      Lwt_log.error_f "%d scopes failed." (List.length scope_errors) >>
+      Lwt_log.error_f "%d scopes failed." (List.length scope_errors)
+        >>= fun () ->
       Lwt.return (Error scope_errors))
