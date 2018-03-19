@@ -169,14 +169,14 @@ let get_mapping conv ini section var =
   get_list (mapping_of_string conv) ini section var
 
 let pcre_group_count =
-  let re = Re_pcre.regexp {q|\([^?]|q} in
+  let re = Re.Pcre.regexp {q|\([^?]|q} in
   fun k -> List.length (Re.all re k)
 
 let get_regexp_mapping ini section var =
   let rms =
     get_mapping
       (fun (k, v) ->
-        let (mark, re) = Re.mark (Re_pcre.re k) in
+        let (mark, re) = Re.mark (Re.Pcre.re k) in
         (re, (mark, pcre_group_count k, Template.of_string v)))
       ini section var
   in

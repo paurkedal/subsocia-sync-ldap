@@ -26,7 +26,7 @@ type t = frag list
 let literal s = [L s]
 
 let of_string =
-  let re = Re_pcre.regexp {q|\$\{([^{}]+)\}|q} in
+  let re = Re.Pcre.regexp {q|\$\{([^{}]+)\}|q} in
   let is_noop = function L "" -> false | _ -> true in
   let to_frag = function `Text s -> L s | `Delim g -> V (Re.Group.get g 1) in
   List.filter is_noop % List.map to_frag % Re.split_full re
