@@ -15,6 +15,7 @@ depends: [
   "conf-gssapi"
   "jbuilder" {build}
   "lwt"
+  "lwt_ppx"
   "ocaml-inifiles"
   "ocamldap"
   "ocamlnet"
