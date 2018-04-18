@@ -2,15 +2,17 @@
 
 (library
  ((name subsocia_sync_ldap)
-  (modules (Config Netldapx Sync Template Variable))
+  (modules (Config Logging Netldapx Sync Template Variable))
   (preprocess (pps (ppx_compose lwt_ppx ppx_regexp)))
   (libraries
    (angstrom
-    ppx_compose.runtime
     inifiles
     ldap
+    logs logs.lwt
     lwt lwt.unix
     netclient netgss-system
+    ppx_compose.runtime
+    ptime ptime.clock.os
     re.pcre
     subsocia subsocia.data))))
 

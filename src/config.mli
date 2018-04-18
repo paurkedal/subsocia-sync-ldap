@@ -57,6 +57,10 @@ type scope = {
   target_name: string;
 } [@@deriving show]
 
+type log_reporter =
+  | Stdio_reporter
+  | File_reporter of Template.t
+
 type ldap_bind =
   | Ldap_bind_anon
   | Ldap_bind_simple of {dn: string; password: string}
@@ -73,7 +77,8 @@ type t = {
   scopes: scope Dict.t;
   bindings: extract Dict.t;
   commit: bool;
-  commit_log: Template.t option;
+  log_level: Logs.level option;
+  log_reporters: log_reporter list;
 } [@@deriving show]
 
 exception Error of string

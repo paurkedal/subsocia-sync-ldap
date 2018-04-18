@@ -57,6 +57,10 @@ type scope = {
   target_name: string;
 } [@@deriving show]
 
+type log_reporter =
+  | Stdio_reporter
+  | File_reporter of Template.t
+
 type ldap_bind =
   | Ldap_bind_anon
   | Ldap_bind_simple of {dn: string; password: string}
@@ -73,7 +77,8 @@ type t = {
   scopes: scope Dict.t;
   bindings: extract Dict.t;
   commit: bool;
-  commit_log: Template.t option;
+  log_level: Logs.level option;
+  log_reporters: log_reporter list;
 } [@@deriving show]
 
 exception Error of string
@@ -248,6 +253,19 @@ let scope_of_inifile ini section = {
   target_name = get ident ini section "target";
 }
 
+let log_level_of_string s =
+  (match Logs.level_of_string s with
+   | Ok level -> level
+   | Error (`Msg msg) -> failwith msg)
+
+let log_reporters_of_inifile ini =
+  (match get_opt Template.of_string ini "logger" "file",
+         get_opt bool_of_string ini "logger" "stdio" with
+   | None, Some false -> []
+   | None, _          -> [Stdio_reporter]
+   | Some file, Some true -> [Stdio_reporter; File_reporter file]
+   | Some file, _         -> [File_reporter file])
+
 let of_inifile ini =
   let ldap_bind =
     (match get_opt ident ini "connection" "ldap_sasl_mech",
@@ -274,7 +292,8 @@ let of_inifile ini =
     targets = Dict.empty;
     scopes = Dict.empty;
     commit = get bool_of_string ini "connection" "commit";
-    commit_log = get_opt Template.of_string ini "connection" "commit_log";
+    log_level = get log_level_of_string ~default:None ini "logger" "level";
+    log_reporters = log_reporters_of_inifile ini;
   } in
   let process_target_section cfg section =
     (match String.split_on_char ':' section with
@@ -295,7 +314,7 @@ let of_inifile ini =
         add_binding variable (extract_of_inifile ini section) cfg
      | ["scope"; variable] ->
         add_scope variable (scope_of_inifile ini section) cfg
-     | ["target"; _] | ["connection"] -> cfg
+     | ["target"; _] | ["connection"] | ["logger"] -> cfg
      | _ -> error_f "Unexpected section %s." section)
   in
   let cfg = List.fold_left process_target_section cfg ini#sects in

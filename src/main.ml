@@ -15,12 +15,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+open Lwt.Infix
 open Printf
 open Subsocia_sync_ldap
 
 let failwith_f fmt = ksprintf failwith fmt
 
 let main config_file scopes commit filters =
+
+  (* Load and check the configuration file. *)
   let ini =
     try new Inifiles.inifile config_file with
      | Inifiles.Ini_parse_error (line, file) ->
@@ -37,14 +40,11 @@ let main config_file scopes commit filters =
   if missing_scopes <> [] then
     failwith_f "The requested scope %s is not defined in %s."
                (String.concat ", " missing_scopes) config_file;
-  let%lwt () =
-    (match config.Config.commit, config.Config.commit_log with
-     | false, _ | true, None -> Lwt.return_unit
-     | true, Some file_name_tmpl ->
-        let file_name = Variable.expand_single config file_name_tmpl in
-        let%lwt logger = Lwt_log.file ~mode:`Append ~file_name () in
-        Lwt_log.default := Lwt_log.broadcast [logger; !Lwt_log.default];
-        Lwt.return_unit) in
+
+  (* Set up logging. *)
+  Logging.setup_logging config >>= fun () ->
+
+  (* Do the synchronization. *)
   (match%lwt Sync.process config ~scopes with
    | Ok () -> Lwt.return 0
    | Error _ -> Lwt.return 69)
