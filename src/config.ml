@@ -136,21 +136,24 @@ let get ?default conv ini section var =
        | None ->
           error_f "Missing required setting %s in section %s." var section)
    | Invalid_argument _ | Failure _ ->
-      error_f "Invalid value for %s in section %s." var section
+      let value = ini#getval section var in
+      error_f "Invalid value %S for %s in section %s." value var section
 
 let get_opt ?default conv ini section var =
   try Some (conv (ini#getval section var)) with
    | Inifiles.Invalid_element _ | Inifiles.Invalid_section _ ->
       default
    | Invalid_argument _ | Failure _ ->
-      error_f "Invalid value for %s in section %s." var section
+      let value = ini#getval section var in
+      error_f "Invalid value %S for %s in section %s." value var section
 
 let get_list ?(default = []) conv ini section var =
   try List.map conv (ini#getaval section var) with
    | Inifiles.Invalid_element _ | Inifiles.Invalid_section _ ->
       default
    | Invalid_argument _ | Failure _ | Not_found ->
-      error_f "Invalid value for %s in section %s." var section
+      let value = ini#getval section var in
+      error_f "Invalid value %S for %s in section %s." value var section
 
 let mapping_parser =
   let open Angstrom in
