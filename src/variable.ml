@@ -42,7 +42,12 @@ let route_regexp re mapping x =
 let rec lookup_multi cfg ?lentry var =
   (match String.split_on_char ':' var with
    | ["env"; var] ->
-      (try [Unix.getenv var] with | Not_found -> [])
+      (match String.split_on_char '=' var with
+       | [var] ->
+          (try [Unix.getenv var] with Not_found -> [])
+       | [var; default] ->
+          (try [Unix.getenv var] with Not_found -> [default])
+       | _ -> failwith_f "Multiple defaults in environment variable reference.")
    | ["var"; var] | [var] ->
       (match Dict.find var cfg.bindings with
        | exception Not_found ->
