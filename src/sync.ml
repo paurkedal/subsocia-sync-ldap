@@ -113,7 +113,6 @@ let process_attribution ~log_header config lentry target_entity attribution =
   let source_path = selector_of_string source_path_str in
   let%lwt source_entity = Entity.select_one source_path in
   let replace (atn, tmpl) =
-    Log.debug (fun m -> m "R %s" atn) >>= fun () ->
     let%lwt Attribute_type.Ex at = Attribute_type.required atn in
     let vt = Attribute_type.value_type at in
     let values_str = Variable.expand_multi config ~lentry tmpl in
