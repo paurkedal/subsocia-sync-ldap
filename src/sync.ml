@@ -26,10 +26,23 @@ open Unprime_option
 module Dict = Config.Dict
 module Sasl_mech_krb5 = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
 
+module Stats = struct
+  type t = {
+    mutable create_count: int;
+    mutable update_count: int;
+  }
+
+  let create () = {create_count = 0; update_count = 0}
+
+  let pp ppf stats =
+    Format.fprintf ppf "%d created, %d updated"
+      stats.create_count stats.update_count
+end
+
 let failwith_f fmt = ksprintf failwith fmt
 
 let connect config =
-  Logs.info (fun m -> m "Connecting to %a." Uri.pp_hum config.Config.ldap_uri);
+  Logs.debug (fun m -> m "Connecting to %a." Uri.pp_hum config.Config.ldap_uri);
   let ldap_server, ldap_host =
     let uri = config.Config.ldap_uri in
     (match Uri.scheme uri, Uri.host uri with
@@ -48,13 +61,13 @@ let connect config =
   let bind_creds =
     (match config.Config.ldap_bind with
      | Config.Ldap_bind_anon ->
-        Logs.info (fun m -> m "Binding anonymously.");
+        Logs.debug (fun m -> m "Binding anonymously.");
         Netldap.anon_bind_creds
      | Config.Ldap_bind_simple {dn; password = pw} ->
-        Logs.info (fun m -> m "Binding as %s." dn);
+        Logs.debug (fun m -> m "Binding as %s." dn);
         Netldap.simple_bind_creds ~dn ~pw
      | Config.Ldap_bind_sasl_gssapi ->
-        Logs.info (fun m -> m "Binding with GSSAPI.");
+        Logs.debug (fun m -> m "Binding with GSSAPI.");
         Netldap.sasl_bind_creds
           ~dn:""
           ~user:""
@@ -172,7 +185,7 @@ let update_entity ?(log_header = lazy Lwt.return_unit)
   Lwt_list.iter_s (process_inclusion ~log_header config lentry target_entity)
     target.Config.inclusions
 
-let process_entry config target target_type = function
+let process_entry config stats target target_type = function
  | `Reference _ -> assert false
  | `Entry ((dn, _) as lentry) ->
     let target_path_str =
@@ -182,11 +195,13 @@ let process_entry config target target_type = function
       >>= fun () ->
     (match%lwt Entity.select_opt target_path with
      | None ->
+        Stats.(stats.create_count <- stats.create_count + 1);
         Commit_log.app (fun m -> m "N %s ↦ %s" dn target_path_str) >>= fun () ->
         if not config.Config.commit then Lwt.return_unit else
         create_entity target_path target_type >>=
         update_entity config lentry target
      | Some target_entity ->
+        Stats.(stats.update_count <- stats.update_count + 1);
         let log_header =
           lazy (Commit_log.app (fun m -> m "U %s ↦ %s" dn target_path_str)) in
         update_entity ~log_header config lentry target target_entity)
@@ -201,13 +216,12 @@ let process_scope config ldap_conn scope_name =
      | cfilters, [] -> `And cfilters
      | cfilters, tfilters -> `And (tfilters @ cfilters))
   in
-  Log.info (fun m -> m "LDAP base: %s" scope.Config.ldap_base_dn)
+  Log.debug (fun m -> m "LDAP base: %s" scope.Config.ldap_base_dn)
     >>= fun () ->
-  Log.info (fun m -> m "LDAP scope: %s"
+  Log.debug (fun m -> m "LDAP scope: %s"
                             (Netldapx.string_of_scope scope.Config.ldap_scope))
     >>= fun () ->
-  Log.info (fun m -> m "LDAP filter: %s"
-                            (Netldapx.string_of_filter filter))
+  Log.debug (fun m -> m "LDAP filter: %s" (Netldapx.string_of_filter filter))
     >>= fun () ->
   let%lwt target_type = Entity_type.required target.Config.entity_type in
   let%lwt lr =
@@ -223,19 +237,22 @@ let process_scope config ldap_conn scope_name =
         ~attributes:target.Config.ldap_attributes)
       ()
   in
+  let stats = Stats.create () in
+  let process lents =
+    Lwt_list.iter_s (process_entry config stats target target_type) lents
+      >>= fun () ->
+    Log.info (fun m -> m
+      "Processed %d LDAP entries, %a." (List.length lr#value) Stats.pp stats) in
   (match lr#code with
    | `Success ->
-      Lwt_list.iter_s (process_entry config target target_type) lr#value
-        >>= fun () ->
-      Lwt.return_none
+      process lr#value >>= fun () -> Lwt.return_none
    | `TimeLimitExceeded ->
       Log.err (fun m ->
         m "Result for %s is incomplete due to time limit."
           scope_name) >>= fun () ->
       begin
         if not scope.Config.partial_is_ok then Lwt.return_unit else
-        Lwt_list.iter_s (process_entry config target target_type)
-                        lr#partial_value
+        process lr#partial_value
       end >>= fun () ->
       Lwt.return_some (scope_name, `Time_limit_exceeded)
    | `SizeLimitExceeded ->
@@ -244,8 +261,7 @@ let process_scope config ldap_conn scope_name =
         >>= fun () ->
       begin
         if not scope.Config.partial_is_ok then Lwt.return_unit else
-        Lwt_list.iter_s (process_entry config target target_type)
-                        lr#partial_value
+        process lr#partial_value
       end >>= fun () ->
       Lwt.return_some (scope_name, `Size_limit_exceeded)
    | _ ->
@@ -265,7 +281,7 @@ let process config ~scopes =
   let%lwt ldap_conn = Lwt_preemptive.detach connect config in
   (match%lwt Lwt_list.filter_map_s (process_scope config ldap_conn) scopes with
    | [] ->
-      Log.info (fun m -> m "Completed with no errors.") >>= fun () ->
+      Log.debug (fun m -> m "Completed with no errors.") >>= fun () ->
       Lwt.return (Ok ())
    | scope_errors ->
       Log.err (fun m -> m "%d scopes failed." (List.length scope_errors))
