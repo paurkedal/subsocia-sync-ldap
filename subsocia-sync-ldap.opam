@@ -20,8 +20,8 @@ depends: [
   "ocaml-inifiles"
   "ocamldap"
   "ocamlnet"
-  "ppx_compose" {build}
-  "ppx_regexp" {build}
+  "ppx_compose"
+  "ppx_regexp"
   "re"
   "subsocia"
 ]
