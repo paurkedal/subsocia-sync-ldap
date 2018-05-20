@@ -1,6 +1,6 @@
 opam-version: "1.2"
-authors: ["Petter A. Urkedal"]
-maintainer: "Petter A. Urkedal <urkedal@nbi.dk>"
+author: "Petter A. Urkedal <paurkedal@gmail.com>"
+maintainer: "Petter A. Urkedal <paurkedal@gmail.com>"
 homepage: "https://github.com/paurkedal/subsocia-sync-ldap"
 bug-reports: "mailto:nimbus-support@nbi.ku.dk"
 dev-repo: "https://github.com/paurkedal/subsocia-sync-ldap.git"
