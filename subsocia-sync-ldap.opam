@@ -10,11 +10,11 @@ depends: [
   "cmdliner"
   "conf-gssapi"
   "jbuilder" {build}
+  "ldap"
   "logs"
   "lwt"
   "lwt_ppx"
   "ocaml-inifiles"
-  "ocamldap"
   "ocamlnet"
   "ppx_compose"
   "ppx_regexp"

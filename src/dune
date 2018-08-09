@@ -16,10 +16,7 @@
 
 (executable
   (name main)
+  (public_name subsocia-sync-ldap)
   (modules Main)
   (preprocess (pps lwt_ppx))
   (libraries cmdliner caqti-dynload subsocia_sync_ldap))
-
-(install
-  (section bin)
-  (files (main.exe as subsocia-sync-ldap)))
