@@ -1,15 +1,11 @@
-opam-version: "1.2"
-author: "Petter A. Urkedal <paurkedal@gmail.com>"
+opam-version: "2.0"
 maintainer: "Petter A. Urkedal <paurkedal@gmail.com>"
+authors: "Petter A. Urkedal <paurkedal@gmail.com>"
+license: "GPL-3"
 homepage: "https://github.com/paurkedal/subsocia-sync-ldap"
 bug-reports: "mailto:nimbus-support@nbi.ku.dk"
-dev-repo: "https://github.com/paurkedal/subsocia-sync-ldap.git"
-license: "GPL-3"
-
-build: [["jbuilder" "build" "-p" name "-j" jobs]]
-build-test: [["jbuilder" "runtest" "-p" name "-j" jobs]]
-
 depends: [
+  "ocaml"
   "angstrom"
   "cmdliner"
   "conf-gssapi"
@@ -25,3 +21,8 @@ depends: [
   "re"
   "subsocia"
 ]
+build: [
+  ["jbuilder" "build" "-p" name "-j" jobs]
+  ["jbuilder" "runtest" "-p" name "-j" jobs] {with-test}
+]
+dev-repo: "git+https://github.com/paurkedal/subsocia-sync-ldap.git"
