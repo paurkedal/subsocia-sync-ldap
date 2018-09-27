@@ -1,0 +1,25 @@
+(library
+  (name subsocia_sync_ldap)
+  (modules Config Logging Netldapx Sync Template Variable)
+  (preprocess (pps ppx_compose lwt_ppx ppx_regexp))
+  (libraries
+    angstrom
+    inifiles
+    ldap
+    logs logs.lwt
+    lwt lwt.unix
+    netclient netgss-system
+    ppx_compose.runtime
+    ptime ptime.clock.os
+    re.pcre
+    subsocia subsocia.data))
+
+(executable
+  (name main)
+  (modules Main)
+  (preprocess (pps lwt_ppx))
+  (libraries cmdliner caqti-dynload subsocia_sync_ldap))
+
+(install
+  (section bin)
+  (files (main.exe as subsocia-sync-ldap)))
