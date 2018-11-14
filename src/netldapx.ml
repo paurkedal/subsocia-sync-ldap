@@ -16,6 +16,21 @@
  *)
 
 open Ldap_types
+open Unprime_option
+
+type 'a generalized_filter =
+  [ `And of 'a generalized_filter list
+  | `Or of 'a generalized_filter list
+  | `Not of 'a generalized_filter
+  | `Equality_match of string * 'a
+  | `Substrings of string * 'a option * 'a list * 'a option
+  | `Greater_or_equal of string * 'a
+  | `Less_or_equal of string * 'a
+  | `Present of string
+  | `Approx_match of string * 'a
+  | `Extensible_match of string option * string option * 'a * bool ]
+
+type filter = string generalized_filter
 
 let scope_of_string = function
  | "base" -> `Base
@@ -77,5 +92,36 @@ let rec ocamldapfilter_of_filter = function
 
 let filter_of_string s = filter_of_ocamldapfilter (Ldap_filter.of_string s)
 let string_of_filter z = Ldap_filter.to_string (ocamldapfilter_of_filter z)
+
+module Filter_template = struct
+
+  type t = Template.t generalized_filter
+
+  let rec map_value f = function
+   | `And qs -> `And (List.map (map_value f) qs)
+   | `Or qs -> `Or (List.map (map_value f) qs)
+   | `Not q -> `Not (map_value f q)
+   | `Equality_match (at, x) ->
+      `Equality_match (at, f x)
+   | `Substrings (at, xI, xA, xF) ->
+      `Substrings (at, Option.map f xI, List.map f xA, Option.map f xF)
+   | `Greater_or_equal (at, x) ->
+      `Greater_or_equal (at, f x)
+   | `Less_or_equal (at, x) ->
+      `Less_or_equal (at, f x)
+   | `Present at ->
+      `Present at
+   | `Approx_match (at, x) ->
+      `Approx_match (at, f x)
+   | `Extensible_match (id, at, x, dn_attrs) ->
+      `Extensible_match (id, at, f x, dn_attrs)
+
+  let neg q = `Not q
+
+  let of_string = map_value Template.of_string % filter_of_string
+  let to_string = string_of_filter % map_value Template.to_string
+
+  let expand f = map_value (Template.expand f)
+end
 
 type ldap_entry = string * (string * string list) list

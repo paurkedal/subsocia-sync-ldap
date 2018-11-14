@@ -24,4 +24,10 @@ type scope_error =
 
 type error = (string * scope_error) list
 
-val process : Config.t -> scopes: string list -> (unit, error) result Lwt.t
+type time = Ptime.t * Ptime.tz_offset_s
+
+val process :
+  Config.t ->
+  scopes: string list ->
+  period: (time option * time option) ->
+  unit -> (unit, error) result Lwt.t

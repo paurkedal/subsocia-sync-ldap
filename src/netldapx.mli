@@ -17,10 +17,20 @@
 
 (** Supplements to [Netldap]. *)
 
+type filter = Netldap.filter
+
 val scope_of_string : string -> Netldap.scope
 val string_of_scope : Netldap.scope -> string
 
 val filter_of_string : string -> Netldap.filter
 val string_of_filter : Netldap.filter -> string
+
+module Filter_template : sig
+  type t
+  val of_string : string -> t
+  val to_string : t -> string
+  val neg : t -> t
+  val expand : (Template.var -> string) -> t -> filter
+end
 
 type ldap_entry = string * (string * string list) list

@@ -208,9 +208,21 @@ let process_entry config stats target target_type = function
         end in
         update_entity ~start_update config lentry target target_entity)
 
-let process_scope config ldap_conn scope_name =
+let format_ptime fmt (t, tz_offset_s) =
+  let (tY, tM, tD), ((tH, tN, tS), tz_offset_s) =
+    Ptime.to_date_time ~tz_offset_s t in
+  let open CalendarLib in
+  assert (tz_offset_s mod 3600 = 0);
+  let tz = Time_Zone.UTC_Plus (tz_offset_s / 3600) in
+  Time_Zone.on
+    (Printer.Calendar.sprint fmt) tz
+    (Calendar.make tY tM tD tH tN tS)
+
+let process_scope config ~period ldap_conn scope_name =
   let scope = Dict.find scope_name config.Config.scopes in
   let target = Dict.find scope.Config.target_name config.Config.targets in
+
+  (* Combine global and scope filters *)
   let filter =
     (match config.Config.ldap_filters, scope.Config.ldap_filters with
      | [], [] -> failwith "No LDAP filter provided."
@@ -218,6 +230,31 @@ let process_scope config ldap_conn scope_name =
      | cfilters, [] -> `And cfilters
      | cfilters, tfilters -> `And (tfilters @ cfilters))
   in
+
+  (* Add update time filters *)
+  let ldap_update_time_filter =
+    (match scope.Config.ldap_update_time_filter with
+     | Some _ as fit -> fit
+     | None -> config.Config.ldap_update_time_filter) in
+  let filter =
+    (match period, ldap_update_time_filter with
+     | (None, None), None -> filter
+     | (_, _), None ->
+        failwith_f "No update time filter provided for scope %s" scope_name
+     | (tI, tF), Some (fitI, fitF, fmt) ->
+        let mk_time_filter fit t =
+          let t_str = format_ptime fmt t in
+          Netldapx.Filter_template.expand
+            (function "t" -> t_str | x -> failwith_f "Undefined variable %s." x)
+            fit
+        in
+        let subfilters =
+          [filter]
+            |> Option.fold (List.cons % mk_time_filter fitI) tI
+            |> Option.fold (List.cons % mk_time_filter fitF) tF in
+        `And subfilters)
+  in
+
   Log.debug (fun m -> m "LDAP base: %s" scope.Config.ldap_base_dn)
     >>= fun () ->
   Log.debug (fun m -> m "LDAP scope: %s"
@@ -225,6 +262,7 @@ let process_scope config ldap_conn scope_name =
     >>= fun () ->
   Log.debug (fun m -> m "LDAP filter: %s" (Netldapx.string_of_filter filter))
     >>= fun () ->
+
   let%lwt target_type = Entity_type.required target.Config.entity_type in
   let%lwt lr =
     Lwt_preemptive.detach
@@ -279,9 +317,13 @@ type scope_error =
 
 type error = (string * scope_error) list
 
-let process config ~scopes =
+type time = Ptime.t * Ptime.tz_offset_s
+
+let process config ~scopes ~period () =
   let%lwt ldap_conn = Lwt_preemptive.detach connect config in
-  (match%lwt Lwt_list.filter_map_s (process_scope config ldap_conn) scopes with
+  (match%lwt
+      Lwt_list.filter_map_s (process_scope config ~period ldap_conn) scopes
+   with
    | [] ->
       Log.debug (fun m -> m "Completed with no errors.") >>= fun () ->
       Lwt.return (Ok ())

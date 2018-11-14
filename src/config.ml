@@ -22,6 +22,7 @@ module Dict = Map.Make (String)
 type ldap_attribute_type = string
 type ldap_dn = string
 type ldap_filter = Netldap.filter
+type ldap_filter_template = Netldapx.Filter_template.t
 
 type extract =
   | Ldap_attribute of ldap_attribute_type
@@ -51,6 +52,8 @@ type scope = {
   ldap_base_dn: ldap_dn;
   ldap_scope: Netldap.scope;
   ldap_filters: Netldap.filter list;
+  ldap_update_time_filter:
+    (ldap_filter_template * ldap_filter_template * string) option;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   partial_is_ok: bool;
@@ -71,6 +74,8 @@ type t = {
   ldap_uri: Uri.t;
   ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
+  ldap_update_time_filter:
+    (ldap_filter_template * ldap_filter_template * string) option;
   ldap_timeout: float option;
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;
@@ -243,12 +248,30 @@ let extract_of_inifile ini section =
    | "ldap_attribute" -> ldap_attribute_of_inifile ini section
    | meth -> error_f "Invalid variable method %s." meth)
 
+let ldap_update_time_filter_of_inifile ini section =
+  (match
+    get_opt Netldapx.Filter_template.of_string ini section
+      "ldap_update_time_ge_filter",
+    get_opt Netldapx.Filter_template.of_string ini section
+      "ldap_update_time_lt_filter",
+    get_opt ident ini section "ldap_update_time_format"
+   with
+   | None, None, _ -> None
+   | Some _, _, None | _, Some _, None ->
+      failwith "Time format must be provided when using time filters."
+   | Some qB, Some qE, Some time_format -> Some (qB, qE, time_format)
+   | Some qB, None, Some time_format ->
+      Some (qB, Netldapx.Filter_template.neg qB, time_format)
+   | None, Some qE, Some time_format ->
+      Some (Netldapx.Filter_template.neg qE, qE, time_format))
+
 let scope_of_inifile ini section = {
   ldap_base_dn = get ident ini section "ldap_base_dn";
   ldap_scope =
     Option.get_or `Sub
       (get_opt Netldapx.scope_of_string ini section "ldap_scope");
   ldap_filters = get_list Netldapx.filter_of_string ini section "ldap_filter";
+  ldap_update_time_filter = ldap_update_time_filter_of_inifile ini section;
   ldap_size_limit = get_opt int_of_string ini section "ldap_size_limit";
   ldap_time_limit = get_opt int_of_string ini section "ldap_time_limit";
   partial_is_ok =
@@ -289,6 +312,8 @@ let of_inifile ini =
     ldap_bind;
     ldap_filters =
       get_list Netldapx.filter_of_string ini "connection" "ldap_filter";
+    ldap_update_time_filter =
+      ldap_update_time_filter_of_inifile ini "connection";
     ldap_timeout = get_opt float_of_string ini "connection" "ldap_timeout";
     subsocia_db_uri = get Uri.of_string ini "connection" "ldap_uri";
     bindings = Dict.empty;

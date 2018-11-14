@@ -4,6 +4,7 @@
   (preprocess (pps ppx_compose lwt_ppx ppx_regexp))
   (libraries
     angstrom
+    calendar
     inifiles
     ldap
     logs logs.lwt

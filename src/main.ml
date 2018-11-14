@@ -18,10 +18,11 @@
 open Lwt.Infix
 open Printf
 open Subsocia_sync_ldap
+open Unprime_option
 
 let failwith_f fmt = ksprintf failwith fmt
 
-let main config_file scopes commit filters =
+let main config_file scopes commit filters period =
 
   (* Load and check the configuration file. *)
   let ini =
@@ -45,7 +46,7 @@ let main config_file scopes commit filters =
   Logging.setup_logging config >>= fun () ->
 
   (* Do the synchronization. *)
-  (match%lwt Sync.process config ~scopes with
+  (match%lwt Sync.process config ~scopes ~period () with
    | Ok () -> Lwt.return 0
    | Error _ -> Lwt.return 69)
 
@@ -59,6 +60,49 @@ module Arg = struct
           `Error (sprintf "At char %d: %s" pos msg) in
     let print ppf z =
       Format.pp_print_string ppf (Netldapx.string_of_filter z) in
+    (parse, print)
+
+  let ptime =
+    let parse s =
+      (match Ptime.of_rfc3339 s |> Ptime.rfc3339_error_to_msg with
+       | Ok (t_tz, Some tz_offset_s, _) ->
+          (match Ptime.sub_span t_tz (Ptime.Span.of_int_s tz_offset_s) with
+           | None -> failwith "Failed to subtract timz zone."
+           | Some t -> `Ok (t, tz_offset_s))
+       | Ok (_, None, _) -> `Error "Missing time zone."
+       | Error (`Msg msg) -> `Error msg) in
+    let print ppf (t, tz_offset_s) = Ptime.pp_rfc3339 ~tz_offset_s () ppf t in
+    (parse, print)
+
+  let ptime_interval =
+    let parse s =
+      (match String.split_on_char '/' s with
+       | [sI; ""] ->
+          (match fst ptime sI with
+           | `Ok tI -> `Ok (Some tI, None)
+           | `Error _ as err -> err)
+       | [""; sF] ->
+          (match fst ptime sF with
+           | `Ok tF -> `Ok (None, Some tF)
+           | `Error _ as err -> err)
+       | [sI; sF] ->
+          let nI = String.length sI in
+          let nF = String.length sF in
+          let convert sI sF =
+            (match fst ptime sI, fst ptime sF with
+             | `Ok tI, `Ok tF -> `Ok (Some tI, Some tF)
+             | `Error msg, _ | _, `Error msg -> `Error msg) in
+          if nF > nI then `Error "End time is longer than start time." else
+          if nF = nI then convert sI sF else
+            (match sI.[nI - nF - 1], sF.[0] with
+             | '0'..'9', 'T' | '-', '0'..'9' ->
+                convert sI (String.sub sI 0 (nI - nF) ^ sF)
+             | _ -> `Error "Invalid specification of end time.")
+       | _ -> `Error "Cannot parse time interval.") in
+    let print ppf (tI, tF) =
+      Option.iter (snd ptime ppf) tI;
+      Format.pp_print_char ppf '/';
+      Option.iter (snd ptime ppf) tF in
     (parse, print)
 end
 
@@ -80,7 +124,18 @@ let main_cmd =
     let docv = "FILTER" in
     let doc = "Conjunct the LDAP filter collected this far with FILTER." in
     Arg.(value @@ opt_all ldap_filter [] @@ info ~doc ~docv ["filter"]) in
-  let term = Term.(const main $ config $ scope $ commit $ filter) in
+  let period =
+    let docv = "PERIOD" in
+    let doc =
+      "Only consider entries updated in this time period. \
+       The argument is expected to be an ISO 8601 time interval without \
+       time zone, e.g. 2018-06-15T10:30/10:45. \
+       The the inital or final time may be empty to indicate no constraint. \
+       This requires ldap_time_filter and ldap_time_format to be specified \
+       for the selected scope or globally." in
+    Arg.(value @@ opt ptime_interval (None, None) @@ info ~doc ~docv ["period"])
+  in
+  let term = Term.(const main $ config $ scope $ commit $ filter $ period) in
   let info = Term.info "subsocia-sync-ldap" in
   (term, info)
 

@@ -22,6 +22,7 @@ module Dict : Map.S with type key = string
 type ldap_attribute_type = string
 type ldap_dn = string
 type ldap_filter = Netldap.filter
+type ldap_filter_template = Netldapx.Filter_template.t
 
 type extract =
   | Ldap_attribute of ldap_attribute_type
@@ -51,6 +52,8 @@ type scope = {
   ldap_base_dn: ldap_dn;
   ldap_scope: Netldap.scope;
   ldap_filters: Netldap.filter list;
+  ldap_update_time_filter:
+    (ldap_filter_template * ldap_filter_template * string) option;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   partial_is_ok: bool;
@@ -71,6 +74,8 @@ type t = {
   ldap_uri: Uri.t;
   ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
+  ldap_update_time_filter:
+    (ldap_filter_template * ldap_filter_template * string) option;
   ldap_timeout: float option;
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;
