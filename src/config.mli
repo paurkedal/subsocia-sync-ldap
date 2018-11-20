@@ -53,7 +53,7 @@ type scope = {
   ldap_scope: Netldap.scope;
   ldap_filters: Netldap.filter list;
   ldap_update_time_filter:
-    (ldap_filter_template * ldap_filter_template * string) option;
+    (ldap_filter_template * ldap_filter_template * string * int option) option;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   partial_is_ok: bool;
@@ -75,7 +75,7 @@ type t = {
   ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   ldap_update_time_filter:
-    (ldap_filter_template * ldap_filter_template * string) option;
+    (ldap_filter_template * ldap_filter_template * string * int option) option;
   min_update_period: Ptime.Span.t;
   ldap_timeout: float option;
   subsocia_db_uri: Uri.t;

@@ -53,7 +53,7 @@ type scope = {
   ldap_scope: Netldap.scope;
   ldap_filters: Netldap.filter list;
   ldap_update_time_filter:
-    (ldap_filter_template * ldap_filter_template * string) option;
+    (ldap_filter_template * ldap_filter_template * string * int option) option;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   partial_is_ok: bool;
@@ -75,7 +75,7 @@ type t = {
   ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   ldap_update_time_filter:
-    (ldap_filter_template * ldap_filter_template * string) option;
+    (ldap_filter_template * ldap_filter_template * string * int option) option;
   min_update_period: Ptime.Span.t;
   ldap_timeout: float option;
   subsocia_db_uri: Uri.t;
@@ -205,6 +205,22 @@ let ptime_span_of_string s =
    | Some t -> t
    | None -> failwith "Invalid duration.")
 
+let time_zone_s_of_string s =
+  (match String.split_on_char ':' s with
+   | ["UTC"] -> 0
+   | [sH; sM] ->
+      if sH = "" || (sH.[0] <> '+' && sH.[0] <> '-') then
+        error_f "Invalid time zone, expecting ±HH:MM." else
+      let tH = int_of_string sH in
+      let tM = int_of_string sM in
+      if tH <= -24 || tH >= 24 then
+        error_f "Time zone hours out of range." else
+      if tM <> 0 then
+        error_f "Only whole-hour time zones currently supported." else
+      tH * 3600 + tM * 60
+   | _ ->
+      error_f "Invalid time zone, expecting \"±HH:MM\" or \"UTC\".")
+
 (* Config from .ini *)
 
 let target_of_inifile ini section = {
@@ -255,6 +271,8 @@ let extract_of_inifile ini section =
    | meth -> error_f "Invalid variable method %s." meth)
 
 let ldap_update_time_filter_of_inifile ini section =
+  let time_zone =
+    get_opt time_zone_s_of_string ini section "ldap_update_time_zone" in
   (match
     get_opt Netldapx.Filter_template.of_string ini section
       "ldap_update_time_ge_filter",
@@ -265,11 +283,12 @@ let ldap_update_time_filter_of_inifile ini section =
    | None, None, _ -> None
    | Some _, _, None | _, Some _, None ->
       failwith "Time format must be provided when using time filters."
-   | Some qB, Some qE, Some time_format -> Some (qB, qE, time_format)
+   | Some qB, Some qE, Some time_format ->
+      Some (qB, qE, time_format, time_zone)
    | Some qB, None, Some time_format ->
-      Some (qB, Netldapx.Filter_template.neg qB, time_format)
+      Some (qB, Netldapx.Filter_template.neg qB, time_format, time_zone)
    | None, Some qE, Some time_format ->
-      Some (Netldapx.Filter_template.neg qE, qE, time_format))
+      Some (Netldapx.Filter_template.neg qE, qE, time_format, time_zone))
 
 let scope_of_inifile ini section = {
   ldap_base_dn = get ident ini section "ldap_base_dn";

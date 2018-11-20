@@ -210,12 +210,16 @@ let process_entry config stats target target_type = function
         end in
         update_entity ~start_update config lentry target target_entity)
 
-let format_ptime fmt (t, tz_offset_s) =
+let format_ptime fmt (t, tz_offset_s) tz_offset_s_cfg =
+  let tz_offset_s_out =
+    (match tz_offset_s_cfg with
+     | None -> tz_offset_s
+     | Some tz_offset_s -> tz_offset_s) in
   let (tY, tM, tD), ((tH, tN, tS), tz_offset_s) =
     Ptime.to_date_time ~tz_offset_s t in
   let open CalendarLib in
   assert (tz_offset_s mod 3600 = 0);
-  let tz = Time_Zone.UTC_Plus (tz_offset_s / 3600) in
+  let tz = Time_Zone.UTC_Plus (tz_offset_s_out / 3600) in
   Time_Zone.on
     (Printer.Calendar.sprint fmt) tz
     (Calendar.make tY tM tD tH tN tS)
@@ -243,9 +247,9 @@ let rec process_scope config period ldap_conn scope_name =
      | (None, None), None -> filter
      | (_, _), None ->
         failwith_f "No update time filter provided for scope %s" scope_name
-     | (tI, tF), Some (fitI, fitF, fmt) ->
+     | (tI, tF), Some (fitI, fitF, fmt, tz) ->
         let mk_time_filter fit t =
-          let t_str = format_ptime fmt t in
+          let t_str = format_ptime fmt t tz in
           Netldapx.Filter_template.expand
             (function "t" -> t_str | x -> failwith_f "Undefined variable %s." x)
             fit
