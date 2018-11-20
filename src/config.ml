@@ -76,6 +76,7 @@ type t = {
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   ldap_update_time_filter:
     (ldap_filter_template * ldap_filter_template * string) option;
+  min_update_period: Ptime.Span.t;
   ldap_timeout: float option;
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;
@@ -199,6 +200,11 @@ let get_literal_mapping ini section var =
   get_mapping (fun (k, v) -> (k, v)) ini section var
     |> List.fold_left (fun dict (k, v) -> Dict.add k v dict) Dict.empty
 
+let ptime_span_of_string s =
+  (match Ptime.Span.of_float_s (float_of_string s) with
+   | Some t -> t
+   | None -> failwith "Invalid duration.")
+
 (* Config from .ini *)
 
 let target_of_inifile ini section = {
@@ -314,6 +320,9 @@ let of_inifile ini =
       get_list Netldapx.filter_of_string ini "connection" "ldap_filter";
     ldap_update_time_filter =
       ldap_update_time_filter_of_inifile ini "connection";
+    min_update_period =
+      get ptime_span_of_string ~default:(Ptime.Span.of_int_s 1) ini "connection"
+          "min_update_period";
     ldap_timeout = get_opt float_of_string ini "connection" "ldap_timeout";
     subsocia_db_uri = get Uri.of_string ini "connection" "ldap_uri";
     bindings = Dict.empty;

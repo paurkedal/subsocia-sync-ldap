@@ -41,6 +41,8 @@ end
 
 let failwith_f fmt = ksprintf failwith fmt
 
+let pp_ptime = Ptime.pp_rfc3339 ()
+
 let connect config =
   Logs.debug (fun m -> m "Connecting to %a." Uri.pp_hum config.Config.ldap_uri);
   let ldap_server, ldap_host =
@@ -218,7 +220,7 @@ let format_ptime fmt (t, tz_offset_s) =
     (Printer.Calendar.sprint fmt) tz
     (Calendar.make tY tM tD tH tN tS)
 
-let process_scope config ~period ldap_conn scope_name =
+let rec process_scope config period ldap_conn scope_name =
   let scope = Dict.find scope_name config.Config.scopes in
   let target = Dict.find scope.Config.target_name config.Config.targets in
 
@@ -296,14 +298,29 @@ let process_scope config ~period ldap_conn scope_name =
       end >>= fun () ->
       Lwt.return_some (scope_name, `Time_limit_exceeded)
    | `SizeLimitExceeded ->
-      Log.err (fun m ->
-        m "Result for %s is incomplete due to size limit." scope_name)
-        >>= fun () ->
-      begin
-        if not scope.Config.partial_is_ok then Lwt.return_unit else
-        process lr#partial_value
-      end >>= fun () ->
-      Lwt.return_some (scope_name, `Size_limit_exceeded)
+      (match period with
+       | (Some (tI, tzI) as tI'), (Some (tF, _) as tF') when
+            Ptime.Span.compare (Ptime.diff tF tI)
+                               config.Config.min_update_period > 0 ->
+          Log.warn (fun m -> m
+            "Size limit exceeded for period [%a, %a), splitting period."
+            pp_ptime tI pp_ptime tF)
+            >>= fun () ->
+          let dtIM = Option.get @@ Ptime.Span.of_float_s @@
+            0.5 *. Ptime.Span.to_float_s (Ptime.diff tF tI) in
+          let tM' = Some (Ptime.add_span tI dtIM |> Option.get, tzI) in
+          (match%lwt process_scope config (tI', tM') ldap_conn scope_name with
+           | None -> process_scope config (tM', tF') ldap_conn scope_name
+           | Some err -> Lwt.return_some err)
+       | _ ->
+          Log.err (fun m ->
+            m "Result for %s is incomplete due to size limit." scope_name)
+            >>= fun () ->
+          begin
+            if not scope.Config.partial_is_ok then Lwt.return_unit else
+            process lr#partial_value
+          end >>= fun () ->
+          Lwt.return_some (scope_name, `Size_limit_exceeded))
    | _ ->
       Log.err (fun m ->
         m "LDAP search for scope %s failed: %s" scope_name lr#diag_msg)
@@ -322,7 +339,7 @@ type time = Ptime.t * Ptime.tz_offset_s
 let process config ~scopes ~period () =
   let%lwt ldap_conn = Lwt_preemptive.detach connect config in
   (match%lwt
-      Lwt_list.filter_map_s (process_scope config ~period ldap_conn) scopes
+    Lwt_list.filter_map_s (process_scope config period ldap_conn) scopes
    with
    | [] ->
       Log.debug (fun m -> m "Completed with no errors.") >>= fun () ->

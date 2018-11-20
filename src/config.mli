@@ -76,6 +76,7 @@ type t = {
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   ldap_update_time_filter:
     (ldap_filter_template * ldap_filter_template * string) option;
+  min_update_period: Ptime.Span.t;
   ldap_timeout: float option;
   subsocia_db_uri: Uri.t;
   targets: target Dict.t;
