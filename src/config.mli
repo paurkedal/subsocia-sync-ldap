@@ -58,7 +58,7 @@ type scope = {
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   partial_is_ok: bool;
-  target_name: string;
+  target_names: string list;
 } [@@deriving show]
 
 type log_reporter =

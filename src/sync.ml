@@ -24,6 +24,7 @@ open Unprime_option
 
 module Dict = Config.Dict
 module Sasl_mech_krb5 = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
+module String_set = Set.Make (String)
 
 module Stats = struct
   type t = {
@@ -238,16 +239,6 @@ let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
   let retry_period period =
     process_scope config period ldap_conn subsocia_conn_cache scope_name in
   let scope = Dict.find scope_name config.Config.scopes in
-  let target = Dict.find scope.Config.target_name config.Config.targets in
-  let subsocia_conn =
-    let uri = Variable.expand_single config target.Config.subsocia_uri in
-    try Hashtbl.find subsocia_conn_cache uri
-    with Not_found ->
-      let conn = Subsocia_connection.connect (Uri.of_string uri) in
-      Hashtbl.add subsocia_conn_cache uri conn; conn
-  in
-  let module Subsocia_conn = (val subsocia_conn) in
-  let module Target_conn = Make_target_conn (Subsocia_conn) in
 
   (* Combine global and scope filters *)
   let filter =
@@ -290,7 +281,16 @@ let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
   Log.debug (fun m -> m "LDAP filter: %s" (Netldapx.string_of_filter filter))
     >>= fun () ->
 
+  let targets =
+    List.map (fun target_name -> Dict.find target_name config.Config.targets)
+    scope.Config.target_names in
   let%lwt lr =
+    let target_attributes target =
+      String_set.empty |> List.fold String_set.add target.Config.ldap_attributes
+    in
+    let attributes =
+      List.fold (String_set.union % target_attributes) targets String_set.empty
+    in
     Lwt_preemptive.detach
       (Netldap.search ldap_conn
         ~base:scope.Config.ldap_base_dn
@@ -300,13 +300,27 @@ let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
         ~time_limit:(Option.get_or 0 scope.Config.ldap_time_limit)
         ~types_only:false
         ~filter
-        ~attributes:target.Config.ldap_attributes)
+        ~attributes:(String_set.elements attributes))
       ()
   in
   let stats = Stats.create () in
+  let process_targets lr_value =
+    targets |> Lwt_list.iter_p begin fun target ->
+      let subsocia_conn =
+        let uri = Variable.expand_single config target.Config.subsocia_uri in
+        try Hashtbl.find subsocia_conn_cache uri
+        with Not_found ->
+          let conn = Subsocia_connection.connect (Uri.of_string uri) in
+          Hashtbl.add subsocia_conn_cache uri conn; conn
+      in
+      let module Subsocia_conn = (val subsocia_conn) in
+      let module Target_conn = Make_target_conn (Subsocia_conn) in
+      Target_conn.process config stats target lr lr_value
+    end
+  in
   (match lr#code with
    | `Success ->
-      Target_conn.process config stats target lr lr#value >>= fun () ->
+      process_targets lr#value >>= fun () ->
       Lwt.return_none
    | `TimeLimitExceeded ->
       Log.err (fun m ->
@@ -314,7 +328,7 @@ let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
           scope_name) >>= fun () ->
       begin
         if not scope.Config.partial_is_ok then Lwt.return_unit else
-        Target_conn.process config stats target lr lr#partial_value
+        process_targets lr#partial_value
       end >>= fun () ->
       Lwt.return_some (scope_name, `Time_limit_exceeded)
    | `SizeLimitExceeded ->
@@ -338,7 +352,7 @@ let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
             >>= fun () ->
           begin
             if not scope.Config.partial_is_ok then Lwt.return_unit else
-            Target_conn.process config stats target lr lr#partial_value
+            process_targets lr#partial_value
           end >>= fun () ->
           Lwt.return_some (scope_name, `Size_limit_exceeded))
    | _ ->

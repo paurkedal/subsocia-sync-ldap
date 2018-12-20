@@ -58,7 +58,7 @@ type scope = {
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   partial_is_ok: bool;
-  target_name: string;
+  target_names: string list;
 } [@@deriving show]
 
 type log_reporter =
@@ -100,10 +100,11 @@ let add_target target_name target cfg =
 
 let add_scope scope_name scope cfg =
   if Dict.mem scope_name cfg.scopes then
-    error_f "Scope %s is already defined." scope_name else
-  if not (Dict.mem scope.target_name cfg.targets) then
-    error_f "Scope %s refers to undefined target %s."
-            scope_name scope.target_name else
+    error_f "Scope %s is already defined." scope_name;
+  scope.target_names |> List.iter begin fun target_name ->
+    if not (Dict.mem target_name cfg.targets) then
+      error_f "Scope %s refers to undefined target %s." scope_name target_name
+  end;
   {cfg with scopes = Dict.add scope_name scope cfg.scopes}
 
 let add_attribution target_name attribution_name attribution cfg =
@@ -302,7 +303,7 @@ let scope_of_inifile ini section = {
   ldap_time_limit = get_opt int_of_string ini section "ldap_time_limit";
   partial_is_ok =
     get ~default:false bool_of_string ini section "partial_is_ok";
-  target_name = get ident ini section "target";
+  target_names = get_list ident ini section "target";
 }
 
 let log_level_of_string s =
