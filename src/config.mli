@@ -41,6 +41,7 @@ type attribution = {
 } [@@deriving show]
 
 type target = {
+  subsocia_uri: Template.t;
   ldap_attributes: string list;
   entity_type: string;
   entity_path: Template.t;
@@ -78,7 +79,6 @@ type t = {
     (ldap_filter_template * ldap_filter_template * string * int option) option;
   min_update_period: Ptime.Span.t;
   ldap_timeout: float option;
-  subsocia_db_uri: Uri.t;
   targets: target Dict.t;
   scopes: scope Dict.t;
   bindings: extract Dict.t;

@@ -41,6 +41,7 @@ type attribution = {
 } [@@deriving show]
 
 type target = {
+  subsocia_uri: Template.t;
   ldap_attributes: string list;
   entity_type: string;
   entity_path: Template.t;
@@ -78,7 +79,6 @@ type t = {
     (ldap_filter_template * ldap_filter_template * string * int option) option;
   min_update_period: Ptime.Span.t;
   ldap_timeout: float option;
-  subsocia_db_uri: Uri.t;
   targets: target Dict.t;
   scopes: scope Dict.t;
   bindings: extract Dict.t;
@@ -224,6 +224,7 @@ let time_zone_s_of_string s =
 (* Config from .ini *)
 
 let target_of_inifile ini section = {
+  subsocia_uri = get Template.of_string ini section "subsocia_uri";
   ldap_attributes = get_list (fun s -> s) ini section "ldap_attribute";
   entity_type = get ident ini section "entity_type";
   entity_path = get Template.of_string ini section "entity_path";
@@ -343,7 +344,6 @@ let of_inifile ini =
       get ptime_span_of_string ~default:(Ptime.Span.of_int_s 1) ini "connection"
           "min_update_period";
     ldap_timeout = get_opt float_of_string ini "connection" "ldap_timeout";
-    subsocia_db_uri = get Uri.of_string ini "connection" "ldap_uri";
     bindings = Dict.empty;
     targets = Dict.empty;
     scopes = Dict.empty;
