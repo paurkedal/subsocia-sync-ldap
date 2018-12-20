@@ -93,11 +93,11 @@ let create_entity target_path target_type =
   let pfx, aconj = Subsocia_selector.add_selector_of_selector target_path in
   let%lwt pfx_entity =
     (match pfx with
-     | None -> Entity.root
+     | None -> Entity.get_root ()
      | Some pfx -> Entity.select_one pfx)
   in
   let resolve (atn, values) =
-    let%lwt Attribute_type.Ex at = Attribute_type.required atn in
+    let%lwt Attribute_type.Any at = Attribute_type.any_of_name_exn atn in
     let vt = Attribute_type.value_type at in
     let values = List.map (Value.typed_of_string vt) values in
     Lwt.return (Attribute_binding (at, Values.of_elements vt values))
@@ -115,7 +115,7 @@ let process_attribution ~start_update config lentry target_entity attribution =
   let source_path = selector_of_string source_path_str in
   let%lwt source_entity = Entity.select_one source_path in
   let replace (atn, tmpl) =
-    let%lwt Attribute_type.Ex at = Attribute_type.required atn in
+    let%lwt Attribute_type.Any at = Attribute_type.any_of_name_exn atn in
     let vt = Attribute_type.value_type at in
     let values_str = Variable.expand_multi config ~lentry tmpl in
     let values = List.map (Value.typed_of_string vt) values_str in

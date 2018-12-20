@@ -20,7 +20,7 @@ depends: [
   "ppx_compose"
   "ppx_regexp"
   "re"
-  "subsocia"
+  "subsocia" {>= "0.18~"}
 ]
 build: [
   ["jbuilder" "build" "-p" name "-j" jobs]
