@@ -191,6 +191,11 @@ module Make_target_conn (Sc : Subsocia_connection.S) = struct
       (process_inclusion ~start_update config lentry target_entity)
       target.Config.inclusions
 
+  let check_create_condition config lentry target =
+    (match target.Config.create_if_exists with
+     | None -> true
+     | Some tmpl -> Variable.expand_multi config ~lentry tmpl != [])
+
   let process_entry config stats target target_type = function
    | `Reference _ -> assert false
    | `Entry ((dn, _) as lentry) ->
@@ -201,11 +206,14 @@ module Make_target_conn (Sc : Subsocia_connection.S) = struct
         >>= fun () ->
       (match%lwt Entity.select_opt target_path with
        | None ->
-          Stats.(stats.create_count <- stats.create_count + 1);
-          Commit_log.app (fun m -> m "N %s ↦ %s" dn target_path_str) >>= fun () ->
-          if not config.Config.commit then Lwt.return_unit else
-          create_entity target_path target_type >>=
-          update_entity config lentry target
+          if check_create_condition config lentry target then begin
+            Stats.(stats.create_count <- stats.create_count + 1);
+            Commit_log.app (fun m -> m "N %s ↦ %s" dn target_path_str)
+              >>= fun () ->
+            if not config.Config.commit then Lwt.return_unit else
+            create_entity target_path target_type >>=
+            update_entity config lentry target
+          end else Lwt.return_unit
        | Some target_entity ->
           let start_update = lazy begin
             Stats.(stats.update_count <- stats.update_count + 1);

@@ -45,6 +45,7 @@ type target = {
   ldap_attributes: string list;
   entity_type: string;
   entity_path: Template.t;
+  create_if_exists: Template.t option;
   inclusions: inclusion list;
   attributions: attribution list;
 } [@@deriving show]

@@ -45,6 +45,7 @@ type target = {
   ldap_attributes: string list;
   entity_type: string;
   entity_path: Template.t;
+  create_if_exists: Template.t option;
   inclusions: inclusion list;
   attributions: attribution list;
 } [@@deriving show]
@@ -229,6 +230,7 @@ let target_of_inifile ini section = {
   ldap_attributes = get_list (fun s -> s) ini section "ldap_attribute";
   entity_type = get ident ini section "entity_type";
   entity_path = get Template.of_string ini section "entity_path";
+  create_if_exists = get_opt Template.of_string ini section "create_if_exists";
   inclusions = [];
   attributions = [];
 }
