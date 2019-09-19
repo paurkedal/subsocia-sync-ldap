@@ -10,7 +10,7 @@ depends: [
   "calendar"
   "cmdliner"
   "conf-gssapi"
-  "jbuilder" {build}
+  "dune" {build}
   "ldap"
   "logs"
   "lwt"
@@ -23,8 +23,8 @@ depends: [
   "subsocia" {>= "0.18~"}
 ]
 build: [
-  ["jbuilder" "build" "-p" name "-j" jobs]
-  ["jbuilder" "runtest" "-p" name "-j" jobs] {with-test}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
 ]
 dev-repo: "git+https://github.com/paurkedal/subsocia-sync-ldap.git"
 synopsis: "LDAP to Subsocia Synchronization"
