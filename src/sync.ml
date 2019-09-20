@@ -41,7 +41,13 @@ end
 
 let failwith_f fmt = ksprintf failwith fmt
 
-let pp_ptime = Ptime.pp_rfc3339 ()
+let pp_ptimetz ppf (t, tz_offset_s) = Ptime.pp_human ~tz_offset_s () ppf t
+
+let pp_period ppf = function
+ | None, None -> Format.fprintf ppf "(-∞, ∞)"
+ | None, Some tF -> Format.fprintf ppf "(-∞, %a)" pp_ptimetz tF
+ | Some tI, None -> Format.fprintf ppf "[%a, ∞)" pp_ptimetz tI
+ | Some tI, Some tF -> Format.fprintf ppf "[%a, %a)" pp_ptimetz tI pp_ptimetz tF
 
 let connect config =
   Logs.debug (fun m -> m "Connecting to %a." Uri.pp_hum config.Config.ldap_uri);
@@ -281,6 +287,8 @@ let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
         `And subfilters)
   in
 
+  Log.info (fun m -> m "Scope %s %a:" scope_name pp_period period)
+    >>= fun () ->
   Log.debug (fun m -> m "LDAP base: %s" scope.Config.ldap_base_dn)
     >>= fun () ->
   Log.debug (fun m -> m "LDAP scope: %s"
@@ -345,8 +353,8 @@ let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
             Ptime.Span.compare (Ptime.diff tF tI)
                                config.Config.min_update_period > 0 ->
           Log.warn (fun m -> m
-            "Size limit exceeded for period [%a, %a), splitting period."
-            pp_ptime tI pp_ptime tF)
+            "Size limit exceeded for period %a, splitting period."
+            pp_period period)
             >>= fun () ->
           let dtIM = Option.get @@ Ptime.Span.of_float_s @@
             0.5 *. Ptime.Span.to_float_s (Ptime.diff tF tI) in
