@@ -64,11 +64,11 @@ let rec lookup_multi cfg ?lentry var =
             |> List.map (fun x -> try Dict.find x d with Not_found -> x)
        | Map_literal (d, tmpl, false) ->
           expand_multi cfg ?lentry tmpl
-            |> List.fmap
+            |> List.filter_map
                 (fun x -> try Some (Dict.find x d) with Not_found -> None)
        | Map_regexp (re, mapping, tmpl) ->
           expand_multi cfg ?lentry tmpl
-            |> List.fmap (route_regexp re mapping)
+            |> List.filter_map (route_regexp re mapping)
             |> List.flatten_map (expand_multi cfg ?lentry))
    | _ ->
       failwith_f "Invalid variable form %s." var)
