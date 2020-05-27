@@ -175,11 +175,10 @@ let mapping_parser =
   let mapsto = white *> string "=>" *> white in
   lift2 (fun k v -> (k, v)) (white *> str <* mapsto) (str <* white)
 
-let mapping_of_string =
-  fun conv input ->
-    (match Angstrom.parse_string mapping_parser input with
-     | Ok m -> conv m
-     | Error msg -> invalid_arg msg)
+let mapping_of_string conv input =
+  (match Angstrom.(parse_string ~consume:Consume.All) mapping_parser input with
+   | Ok m -> conv m
+   | Error msg -> invalid_arg msg)
 
 let get_mapping conv ini section var =
   get_list (mapping_of_string conv) ini section var
