@@ -65,10 +65,7 @@ module Arg = struct
   let ptime =
     let parse s =
       (match Ptime.of_rfc3339 s |> Ptime.rfc3339_error_to_msg with
-       | Ok (t_tz, Some tz_offset_s, _) ->
-          (match Ptime.sub_span t_tz (Ptime.Span.of_int_s tz_offset_s) with
-           | None -> failwith "Failed to subtract timz zone."
-           | Some t -> `Ok (t, tz_offset_s))
+       | Ok (t, Some tz_offset_s, _) -> `Ok (t, tz_offset_s)
        | Ok (_, None, _) -> `Error "Missing time zone."
        | Error (`Msg msg) -> `Error msg) in
     let print ppf (t, tz_offset_s) = Ptime.pp_rfc3339 ~tz_offset_s () ppf t in
