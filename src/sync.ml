@@ -240,10 +240,10 @@ let format_ptime fmt (t, tz_offset_s) tz_offset_s_cfg =
     (match tz_offset_s_cfg with
      | None -> tz_offset_s
      | Some tz_offset_s -> tz_offset_s) in
-  let (tY, tM, tD), ((tH, tN, tS), tz_offset_s) =
-    Ptime.to_date_time ~tz_offset_s t in
+  let (tY, tM, tD), ((tH, tN, tS), tz_offset_s) = Ptime.to_date_time t in
+  assert (tz_offset_s = 0);
+  assert (tz_offset_s_out mod 3600 = 0);
   let open CalendarLib in
-  assert (tz_offset_s mod 3600 = 0);
   let tz = Time_Zone.UTC_Plus (tz_offset_s_out / 3600) in
   Time_Zone.on
     (Printer.Calendar.sprint fmt) tz
