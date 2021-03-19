@@ -236,18 +236,16 @@ module Make_target_conn (Sc : Subsocia_connection.S) = struct
 end
 
 let format_ptime fmt (t, tz_offset_s) tz_offset_s_cfg =
-  let tz_offset_s_out =
-    (match tz_offset_s_cfg with
-     | None -> tz_offset_s
-     | Some tz_offset_s -> tz_offset_s) in
-  let (tY, tM, tD), ((tH, tN, tS), tz_offset_s) = Ptime.to_date_time t in
-  assert (tz_offset_s = 0);
-  assert (tz_offset_s_out mod 3600 = 0);
-  let open CalendarLib in
-  let tz = Time_Zone.UTC_Plus (tz_offset_s_out / 3600) in
-  Time_Zone.on
-    (Printer.Calendar.sprint fmt) tz
-    (Calendar.make tY tM tD tH tN tS)
+  let zone =
+    let tz_s =
+      (match tz_offset_s_cfg with
+       | None -> tz_offset_s
+       | Some tz_offset_s -> tz_offset_s)
+    in
+    if tz_s mod 60 = 0 then tz_s / 60 else
+    failwith "Cannot format time using sub-minute time zone."
+  in
+  Netdate.create ~zone (Ptime.to_float_s t) |> Netdate.format ~fmt
 
 let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
   let retry_period period =

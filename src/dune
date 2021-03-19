@@ -4,12 +4,11 @@
   (preprocess (pps ppx_compose lwt_ppx ppx_regexp))
   (libraries
     angstrom
-    calendar
     inifiles
     ldap
     logs logs.lwt
     lwt lwt.unix
-    netclient netgss-system
+    netstring netclient netgss-system
     ppx_compose.runtime
     ptime ptime.clock.os
     re.pcre
