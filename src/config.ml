@@ -56,6 +56,7 @@ type scope = {
   ldap_filters: Netldap.filter list;
   ldap_update_time_filter:
     (ldap_filter_template * ldap_filter_template * string * int option) option;
+  ldap_partition_attribute_type: ldap_attribute_type option;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   partial_is_ok: bool;
@@ -300,6 +301,8 @@ let scope_of_inifile ini section = {
       (get_opt Netldapx.scope_of_string ini section "ldap_scope");
   ldap_filters = get_list Netldapx.filter_of_string ini section "ldap_filter";
   ldap_update_time_filter = ldap_update_time_filter_of_inifile ini section;
+  ldap_partition_attribute_type =
+    get_opt ident ini section "ldap_partition_attribute_type";
   ldap_size_limit = get_opt int_of_string ini section "ldap_size_limit";
   ldap_time_limit = get_opt int_of_string ini section "ldap_time_limit";
   partial_is_ok =

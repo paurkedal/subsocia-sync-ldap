@@ -137,6 +137,7 @@ let main_cmd =
   (term, info)
 
 let () =
+  Random.self_init ();
   (match Cmdliner.Term.eval main_cmd with
    | `Ok m -> exit (Lwt_main.run m)
    | `Error _ -> exit 64

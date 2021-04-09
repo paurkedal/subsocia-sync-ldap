@@ -56,6 +56,7 @@ type scope = {
   ldap_filters: Netldap.filter list;
   ldap_update_time_filter:
     (ldap_filter_template * ldap_filter_template * string * int option) option;
+  ldap_partition_attribute_type: ldap_attribute_type option;
   ldap_size_limit: int option;
   ldap_time_limit: int option;
   partial_is_ok: bool;

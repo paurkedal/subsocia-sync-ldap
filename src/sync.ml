@@ -247,9 +247,19 @@ let format_ptime fmt (t, tz_offset_s) tz_offset_s_cfg =
   in
   Netdate.create ~zone (Ptime.to_float_s t) |> Netdate.format ~fmt
 
-let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
+let rec process_scope
+    ~config ~period ?partition_lb ?partition_ub ~ldap_conn ~subsocia_conn_cache
+    scope_name =
   let retry_period period =
-    process_scope config period ldap_conn subsocia_conn_cache scope_name in
+    process_scope
+      ~config ~period ?partition_lb ?partition_ub
+      ~ldap_conn ~subsocia_conn_cache scope_name
+  in
+  let retry_partition partition_lb partition_ub =
+    process_scope
+      ~config ~period ?partition_lb ?partition_ub
+      ~ldap_conn ~subsocia_conn_cache scope_name
+  in
   let scope = Dict.find scope_name config.Config.scopes in
 
   (* Combine global and scope filters *)
@@ -283,6 +293,17 @@ let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
             |> Option.fold (List.cons % mk_time_filter fitI) tI
             |> Option.fold (List.cons % mk_time_filter fitF) tF in
         `And subfilters)
+  in
+  let filter =
+    (match scope.Config.ldap_partition_attribute_type with
+     | None -> filter
+     | Some attr_type ->
+        let ge v = `Greater_or_equal (attr_type, v) in
+        (match partition_lb, partition_ub with
+         | None, None -> filter
+         | Some lb, None -> `And [filter; ge lb]
+         | None, Some ub -> `And [filter; `Not (ge ub)]
+         | Some lb, Some ub -> `And [filter; ge lb; `Not (ge ub)]))
   in
 
   Log.info (fun m -> m "Scope %s %a:" scope_name pp_period period)
@@ -346,20 +367,37 @@ let rec process_scope config period ldap_conn subsocia_conn_cache scope_name =
       end >>= fun () ->
       Lwt.return_some (scope_name, `Time_limit_exceeded)
    | `SizeLimitExceeded ->
-      (match period with
-       | (Some (tI, tzI) as tI'), (Some (tF, _) as tF') when
+      (match period, scope.Config.ldap_partition_attribute_type with
+       | ((Some (tI, tzI) as tI'), (Some (tF, _) as tF')), _ when
             Ptime.Span.compare (Ptime.diff tF tI)
                                config.Config.min_update_period > 0 ->
-          Log.warn (fun m -> m
-            "Size limit exceeded for period %a, splitting period."
-            pp_period period)
-            >>= fun () ->
+          Log.warn (fun f ->
+            f "Size limit exceeded for period %a, splitting period."
+              pp_period period) >>= fun () ->
           let dtIM = Option.get @@ Ptime.Span.of_float_s @@
             0.5 *. Ptime.Span.to_float_s (Ptime.diff tF tI) in
           let tM' = Some (Ptime.add_span tI dtIM |> Option.get, tzI) in
           (match%lwt retry_period (tI', tM') with
            | None -> retry_period (tM', tF')
            | Some err -> Lwt.return_some err)
+       | _, Some attr_type ->
+          Log.warn (fun f ->
+            f "Size limit exceeded for period %a, splitting on %s."
+              pp_period period attr_type) >>= fun () ->
+          let entries = lr#partial_value in
+          (match List.nth entries (Random.int (List.length entries)) with
+           | `Entry (_, attrs) ->
+              (match List.assoc_opt attr_type attrs with
+               | Some (partition :: _) ->
+                  (match%lwt retry_partition partition_lb (Some partition) with
+                   | None -> retry_partition (Some partition) partition_ub
+                   | Some err -> Lwt.return_some err)
+               | Some [] | None ->
+                  Log.err (fun f ->
+                    f "Size limit exceeded and no attribute value to split on.")
+                    >|= fun () ->
+                  Some (scope_name, `Size_limit_exceeded))
+           | `Reference _ -> assert false)
        | _ ->
           Log.err (fun m ->
             m "Result for %s is incomplete due to size limit." scope_name)
@@ -389,7 +427,7 @@ let process config ~scopes ~period () =
   let subsocia_conn_cache = Hashtbl.create 3 in
   (match%lwt
     Lwt_list.filter_map_s
-      (process_scope config period ldap_conn subsocia_conn_cache)
+      (process_scope ~config ~period ~ldap_conn ~subsocia_conn_cache)
       scopes
    with
    | [] ->
