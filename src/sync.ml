@@ -381,14 +381,14 @@ let rec process_scope
            | None -> retry_period (tM', tF')
            | Some err -> Lwt.return_some err)
        | _, Some attr_type ->
-          Log.warn (fun f ->
-            f "Size limit exceeded for period %a, splitting on %s."
-              pp_period period attr_type) >>= fun () ->
           let entries = lr#partial_value in
           (match List.nth entries (Random.int (List.length entries)) with
            | `Entry (_, attrs) ->
               (match List.assoc_opt attr_type attrs with
                | Some (partition :: _) ->
+                  Log.warn (fun f ->
+                    f "Size limit exceeded for period %a, splitting on %s=%s."
+                      pp_period period attr_type partition) >>= fun () ->
                   (match%lwt retry_partition partition_lb (Some partition) with
                    | None -> retry_partition (Some partition) partition_ub
                    | Some err -> Lwt.return_some err)
