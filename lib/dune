@@ -1,6 +1,5 @@
 (library
   (name subsocia_sync_ldap)
-  (modules Config Logging Netldapx Sync Target Template Variable)
   (preprocess (pps ppx_compose lwt_ppx ppx_regexp))
   (libraries
     angstrom
@@ -13,10 +12,3 @@
     ptime ptime.clock.os
     re.pcre
     subsocia subsocia.data))
-
-(executable
-  (name main)
-  (public_name subsocia-sync-ldap)
-  (modules Main)
-  (preprocess (pps lwt_ppx))
-  (libraries cmdliner caqti-dynload subsocia_sync_ldap))

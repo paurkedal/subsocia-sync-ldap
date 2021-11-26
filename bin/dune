@@ -1,0 +1,5 @@
+(executable
+  (name main)
+  (public_name subsocia-sync-ldap)
+  (preprocess (pps lwt_ppx))
+  (libraries cmdliner caqti-dynload subsocia_sync_ldap))
