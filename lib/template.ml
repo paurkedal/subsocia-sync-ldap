@@ -34,6 +34,8 @@ let of_string =
 let to_string =
   String.concat "" % List.map (function L s -> s | V var -> "${"^var^"}")
 
+let pp ppf = Format.pp_print_string ppf % to_string
+
 let partial_expand lookup =
   let expand_frag = function
    | L s -> L s

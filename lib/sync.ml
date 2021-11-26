@@ -17,7 +17,6 @@
 
 open Logging
 open Lwt.Infix
-open Printf
 open Unprime_list
 open Unprime_option
 
@@ -25,12 +24,10 @@ module Dict = Config.Dict
 module Sasl_mech_krb5 = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
 module String_set = Set.Make (String)
 
-let failwith_f fmt = ksprintf failwith fmt
-
 let pp_ptimetz ppf (t, tz_offset_s) = Ptime.pp_human ~tz_offset_s () ppf t
 
 let pp_period ppf = function
- | None, None -> Format.fprintf ppf "(-∞, ∞)"
+ | None, None -> Format.pp_print_string ppf "(-∞, ∞)"
  | None, Some tF -> Format.fprintf ppf "(-∞, %a)" pp_ptimetz tF
  | Some tI, None -> Format.fprintf ppf "[%a, ∞)" pp_ptimetz tI
  | Some tI, Some tF -> Format.fprintf ppf "[%a, %a)" pp_ptimetz tI pp_ptimetz tF
@@ -46,7 +43,7 @@ let connect config =
         let timeout = config.Config.ldap_timeout in
         (Netldap.ldap_server ?timeout ssymb, host)
      | Some scheme, _ ->
-        failwith_f "Unsupported protocol %s." scheme
+        Fmt.failwith "Unsupported protocol %s." scheme
      | _, None ->
         failwith "Missing host name in LDAP uri.")
   in
@@ -117,12 +114,14 @@ let rec process_scope
     (match period, ldap_update_time_filter with
      | (None, None), None -> filter
      | (_, _), None ->
-        failwith_f "No update time filter provided for scope %s" scope_name
+        Fmt.failwith "No update time filter provided for scope %s" scope_name
      | (tI, tF), Some (fitI, fitF, fmt, tz) ->
         let mk_time_filter fit t =
           let t_str = format_ptime fmt t tz in
           Netldapx.Filter_template.expand
-            (function "t" -> t_str | x -> failwith_f "Undefined variable %s." x)
+            (function
+             | "t" -> t_str
+             | x -> Fmt.failwith "Undefined variable %s." x)
             fit
         in
         let subfilters =

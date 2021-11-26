@@ -10,6 +10,7 @@ depends: [
   "cmdliner"
   "conf-gssapi"
   "dune" {build}
+  "fmt"
   "ldap"
   "logs"
   "lwt"

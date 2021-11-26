@@ -27,6 +27,8 @@ val of_string : string -> t
 
 val to_string : t -> string
 
+val pp : t Fmt.t
+
 val partial_expand : (var -> string option) -> t -> t
 
 val expand : (var -> string) -> t -> string

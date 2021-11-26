@@ -3,6 +3,7 @@
   (preprocess (pps ppx_compose lwt_ppx ppx_regexp))
   (libraries
     angstrom
+    fmt
     inifiles
     ldap
     logs logs.lwt

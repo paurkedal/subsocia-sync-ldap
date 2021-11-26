@@ -20,11 +20,9 @@ open Lwt.Infix
 open Subsocia_common
 open Unprime_list
 
-let failwith_f fmt = Printf.ksprintf failwith fmt
-
 let selector_of_string s =
   (try Subsocia_selector.selector_of_string s with
-   | Invalid_argument _ -> failwith_f "Invalid selector %s." s)
+   | Invalid_argument _ -> Fmt.failwith "Invalid selector %s." s)
 
 module Stats = struct
   type t = {
