@@ -18,26 +18,12 @@
 open Logging
 open Lwt.Infix
 open Printf
-open Subsocia_common
 open Unprime_list
 open Unprime_option
 
 module Dict = Config.Dict
 module Sasl_mech_krb5 = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
 module String_set = Set.Make (String)
-
-module Stats = struct
-  type t = {
-    mutable create_count: int;
-    mutable update_count: int;
-  }
-
-  let create () = {create_count = 0; update_count = 0}
-
-  let pp ppf stats =
-    Format.fprintf ppf "%d created, %d updated"
-      stats.create_count stats.update_count
-end
 
 let failwith_f fmt = ksprintf failwith fmt
 
@@ -86,155 +72,6 @@ let connect config =
   Netldap.conn_bind ldap_conn bind_creds;
   ldap_conn
 
-let selector_of_string s =
-  (try Subsocia_selector.selector_of_string s with
-   | Invalid_argument _ -> failwith_f "Invalid selector %s." s)
-
-(* Target Processing *)
-
-module Make_target_conn (Sc : Subsocia_connection.S) = struct
-  open Sc
-
-  type attribute_binding =
-   | Attribute_binding : 'a Attribute_type.t * 'a Values.t -> attribute_binding
-
-  let create_entity target_path target_type =
-    let pfx, aconj = Subsocia_selector.add_selector_of_selector target_path in
-    let%lwt pfx_entity =
-      (match pfx with
-       | None -> Entity.get_root ()
-       | Some pfx -> Entity.select_one pfx)
-    in
-    let resolve (atn, values) =
-      let%lwt Attribute_type.Any at = Attribute_type.any_of_name_exn atn in
-      let vt = Attribute_type.value_type at in
-      let values = List.map (Value.typed_of_string vt) values in
-      Lwt.return (Attribute_binding (at, Values.of_elements vt values))
-    in
-    let%lwt aconj = Lwt_list.map_s resolve (String_map.bindings aconj) in
-    let%lwt entity = Entity.create target_type in
-    Lwt_list.iter_s
-      (fun (Attribute_binding (at, values)) ->
-        Entity.set_values at values pfx_entity entity) aconj
-    >|= fun () -> entity
-
-  let process_attribution ~start_update config lentry target_entity attribution =
-    let source_path_str =
-      Variable.expand_single config ~lentry attribution.Config.source in
-    let source_path = selector_of_string source_path_str in
-    let%lwt source_entity = Entity.select_one source_path in
-    let replace (atn, tmpl) =
-      let%lwt Attribute_type.Any at = Attribute_type.any_of_name_exn atn in
-      let vt = Attribute_type.value_type at in
-      let values_str = Variable.expand_multi config ~lentry tmpl in
-      let values = List.map (Value.typed_of_string vt) values_str in
-      let values = Values.of_elements vt values in
-      let%lwt old_values = Entity.get_values at source_entity target_entity in
-      if Values.elements values = Values.elements old_values then
-        Lwt.return_unit else
-      Lazy.force start_update >>= fun () ->
-      Commit_log.app (fun m ->
-        m "- %s %s ↦ %s" atn
-          (Values.to_json_string vt old_values)
-          (Values.to_json_string vt values)) >>= fun () ->
-      if not config.Config.commit then Lwt.return_unit else
-      Entity.set_values at values source_entity target_entity
-    in
-    Lwt_list.iter_s replace attribution.Config.replace
-
-  let select_or_warn sel =
-    (match%lwt Entity.select_opt sel with
-     | None ->
-        Log.warn (fun m ->
-          m "Cannot find %s."
-            (Subsocia_selector.string_of_selector sel)) >>= fun () ->
-        Lwt.return_none
-     | Some ent ->
-        Lwt.return_some ent)
-
-  let process_inclusion ~start_update config lentry target_entity inclusion =
-    let force_paths =
-      Variable.expand_multi config ~lentry inclusion.Config.force_super in
-    let force_paths = List.map selector_of_string force_paths in
-    let%lwt force_entities = Lwt_list.filter_map_s select_or_warn force_paths in
-
-    let force_super super_entity =
-      if%lwt not =|< Entity.is_sub target_entity super_entity then begin
-        let%lwt super_name = Entity.display_name super_entity in
-        Lazy.force start_update >>= fun () ->
-        Commit_log.app (fun m -> m "≼ %s" super_name) >>= fun () ->
-        if not config.Config.commit then Lwt.return_unit else
-        Entity.force_dsub target_entity super_entity
-      end in
-
-    let relax_super super_entity =
-      if%lwt Entity.is_sub target_entity super_entity then begin
-        let%lwt super_name = Entity.display_name super_entity in
-        Lazy.force start_update >>= fun () ->
-        Commit_log.app (fun m -> m "⋠ %s" super_name) >>= fun () ->
-        if not config.Config.commit then Lwt.return_unit else
-        Entity.relax_dsub target_entity super_entity
-      end in
-
-    Lwt_list.iter_s force_super force_entities >>= fun () ->
-    (match inclusion.Config.relax_super with
-     | None -> Lwt.return_unit
-     | Some relax_paths ->
-        let relax_paths = Variable.expand_multi config ~lentry relax_paths in
-        let relax_paths = List.map selector_of_string relax_paths in
-        let%lwt relax_entities = Lwt_list.map_s Entity.select relax_paths in
-        let relax_entities = Entity.Set.empty
-          |> List.fold Entity.Set.union relax_entities
-          |> List.fold Entity.Set.remove force_entities in
-        Entity.Set.iter_s relax_super relax_entities)
-
-  let update_entity ?(start_update = lazy Lwt.return_unit)
-                    config lentry target target_entity =
-    Lwt_list.iter_s
-      (process_attribution ~start_update config lentry target_entity)
-      target.Config.attributions >>= fun () ->
-    Lwt_list.iter_s
-      (process_inclusion ~start_update config lentry target_entity)
-      target.Config.inclusions
-
-  let check_create_condition config lentry target =
-    (match target.Config.create_if_exists with
-     | None -> true
-     | Some tmpl -> Variable.expand_multi config ~lentry tmpl != [])
-
-  let process_entry config stats target target_type = function
-   | `Reference _ -> assert false
-   | `Entry ((dn, _) as lentry) ->
-      let target_path_str =
-        Variable.expand_single config ~lentry target.Config.entity_path in
-      let target_path = selector_of_string target_path_str in
-      Log.debug (fun m -> m "Processing %s => %s" dn target_path_str)
-        >>= fun () ->
-      (match%lwt Entity.select_opt target_path with
-       | None ->
-          if check_create_condition config lentry target then begin
-            Stats.(stats.create_count <- stats.create_count + 1);
-            Commit_log.app (fun m -> m "N %s ↦ %s" dn target_path_str)
-              >>= fun () ->
-            if not config.Config.commit then Lwt.return_unit else
-            create_entity target_path target_type >>=
-            update_entity config lentry target
-          end else Lwt.return_unit
-       | Some target_entity ->
-          let start_update = lazy begin
-            Stats.(stats.update_count <- stats.update_count + 1);
-            Commit_log.app (fun m -> m "U %s ↦ %s" dn target_path_str)
-          end in
-          update_entity ~start_update config lentry target target_entity)
-
-  let process config stats target lr lr_value =
-    let%lwt target_type = Entity_type.of_name_exn target.Config.entity_type in
-    Lwt_list.iter_s (process_entry config stats target target_type) lr_value
-      >>= fun () ->
-    Log.info (fun m -> m
-      "Processed %d LDAP entries, %a." (List.length lr#value) Stats.pp stats)
-end
-
 let format_ptime fmt (t, tz_offset_s) tz_offset_s_cfg =
   let zone =
     let tz_s =
@@ -248,17 +85,17 @@ let format_ptime fmt (t, tz_offset_s) tz_offset_s_cfg =
   Netdate.create ~zone (Ptime.to_float_s t) |> Netdate.format ~fmt
 
 let rec process_scope
-    ~config ~period ?partition_lb ?partition_ub ~ldap_conn ~subsocia_conn_cache
+    ~config ~period ?partition_lb ?partition_ub ~ldap_conn ~target_cache
     scope_name =
   let retry_period period =
     process_scope
       ~config ~period ?partition_lb ?partition_ub
-      ~ldap_conn ~subsocia_conn_cache scope_name
+      ~ldap_conn ~target_cache scope_name
   in
   let retry_partition partition_lb partition_ub =
     process_scope
       ~config ~period ?partition_lb ?partition_ub
-      ~ldap_conn ~subsocia_conn_cache scope_name
+      ~ldap_conn ~target_cache scope_name
   in
   let scope = Dict.find scope_name config.Config.scopes in
 
@@ -317,14 +154,20 @@ let rec process_scope
     >>= fun () ->
 
   let targets =
-    List.map (fun target_name -> Dict.find target_name config.Config.targets)
-    scope.Config.target_names in
-  let%lwt lr =
-    let target_attributes target =
-      String_set.empty |> List.fold String_set.add target.Config.ldap_attributes
+    let get_conn target_name =
+      try Hashtbl.find target_cache target_name
+      with Not_found ->
+        let conn = Target.connect config target_name in
+        Hashtbl.add target_cache target_name conn;
+        conn
     in
+    List.map get_conn scope.Config.target_names
+  in
+
+  let%lwt lr =
     let attributes =
-      List.fold (String_set.union % target_attributes) targets String_set.empty
+      String_set.empty
+        |> List.fold (List.fold String_set.add % Target.ldap_attributes) targets
     in
     Lwt_preemptive.detach
       (Netldap.search ldap_conn
@@ -338,20 +181,8 @@ let rec process_scope
         ~attributes:(String_set.elements attributes))
       ()
   in
-  let stats = Stats.create () in
   let process_targets lr_value =
-    targets |> Lwt_list.iter_p begin fun target ->
-      let subsocia_conn =
-        let uri = Variable.expand_single config target.Config.subsocia_uri in
-        try Hashtbl.find subsocia_conn_cache uri
-        with Not_found ->
-          let conn = Subsocia_connection.connect (Uri.of_string uri) in
-          Hashtbl.add subsocia_conn_cache uri conn; conn
-      in
-      let module Subsocia_conn = (val subsocia_conn) in
-      let module Target_conn = Make_target_conn (Subsocia_conn) in
-      Target_conn.process config stats target lr lr_value
-    end
+    Lwt_list.iter_p (fun target -> Target.process target lr_value) targets
   in
   (match lr#code with
    | `Success ->
@@ -424,10 +255,10 @@ type time = Ptime.t * Ptime.tz_offset_s
 
 let process config ~scopes ~period () =
   let%lwt ldap_conn = Lwt_preemptive.detach connect config in
-  let subsocia_conn_cache = Hashtbl.create 3 in
+  let target_cache = Hashtbl.create 3 in
   (match%lwt
     Lwt_list.filter_map_s
-      (process_scope ~config ~period ~ldap_conn ~subsocia_conn_cache)
+      (process_scope ~config ~period ~ldap_conn ~target_cache)
       scopes
    with
    | [] ->

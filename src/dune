@@ -1,6 +1,6 @@
 (library
   (name subsocia_sync_ldap)
-  (modules Config Logging Netldapx Sync Template Variable)
+  (modules Config Logging Netldapx Sync Target Template Variable)
   (preprocess (pps ppx_compose lwt_ppx ppx_regexp))
   (libraries
     angstrom
