@@ -29,7 +29,8 @@ let route_regexp re mapping x =
             (try Some (Re.Group.get g (group_count + int_of_string var)) with
              | Not_found ->
                 Fmt.failwith "Reference to unmatched group in %a." Template.pp y
-             | Failure _ -> None) in
+             | Failure _ -> None)
+          in
           if Re.Mark.test g mark then Template.partial_expand lookup y else
           loop (group_count + ng) mapping
       in

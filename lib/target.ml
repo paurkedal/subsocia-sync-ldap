@@ -17,6 +17,7 @@
 
 open Logging
 open Lwt.Infix
+open Lwt.Syntax
 open Subsocia_common
 open Unprime_list
 
@@ -63,36 +64,38 @@ module Make (Arg : ARG) () : S = struct
 
   let create_entity target_path target_type =
     let pfx, aconj = Subsocia_selector.add_selector_of_selector target_path in
-    let%lwt pfx_entity =
+    let* pfx_entity =
       (match pfx with
        | None -> Entity.get_root ()
        | Some pfx -> Entity.select_one pfx)
     in
     let resolve (atn, values) =
-      let%lwt Attribute_type.Any at = Attribute_type.any_of_name_exn atn in
+      let* Attribute_type.Any at = Attribute_type.any_of_name_exn atn in
       let vt = Attribute_type.value_type at in
       let values = List.map (Value.typed_of_string vt) values in
       Lwt.return (Attribute_binding (at, Values.of_elements vt values))
     in
-    let%lwt aconj = Lwt_list.map_s resolve (String_map.bindings aconj) in
-    let%lwt entity = Entity.create target_type in
-    Lwt_list.iter_s
-      (fun (Attribute_binding (at, values)) ->
-        Entity.set_values at values pfx_entity entity) aconj
-    >|= fun () -> entity
+    let* aconj = Lwt_list.map_s resolve (String_map.bindings aconj) in
+    let* entity = Entity.create target_type in
+    let+ () =
+      Lwt_list.iter_s
+        (fun (Attribute_binding (at, values)) ->
+          Entity.set_values at values pfx_entity entity) aconj
+    in
+    entity
 
   let process_attribution ~start_update config lentry target_entity attribution =
     let source_path_str =
       Variable.expand_single config ~lentry attribution.Config.source in
     let source_path = selector_of_string source_path_str in
-    let%lwt source_entity = Entity.select_one source_path in
+    let* source_entity = Entity.select_one source_path in
     let replace (atn, tmpl) =
-      let%lwt Attribute_type.Any at = Attribute_type.any_of_name_exn atn in
+      let* Attribute_type.Any at = Attribute_type.any_of_name_exn atn in
       let vt = Attribute_type.value_type at in
       let values_str = Variable.expand_multi config ~lentry tmpl in
       let values = List.map (Value.typed_of_string vt) values_str in
       let values = Values.of_elements vt values in
-      let%lwt old_values = Entity.get_values at source_entity target_entity in
+      let* old_values = Entity.get_values at source_entity target_entity in
       if Values.elements values = Values.elements old_values then
         Lwt.return_unit else
       Lazy.force start_update >>= fun () ->
@@ -119,25 +122,27 @@ module Make (Arg : ARG) () : S = struct
     let force_paths =
       Variable.expand_multi config ~lentry inclusion.Config.force_super in
     let force_paths = List.map selector_of_string force_paths in
-    let%lwt force_entities = Lwt_list.filter_map_s select_or_warn force_paths in
+    let* force_entities = Lwt_list.filter_map_s select_or_warn force_paths in
 
     let force_super super_entity =
       if%lwt not =|< Entity.is_sub target_entity super_entity then begin
-        let%lwt super_name = Entity.display_name super_entity in
+        let* super_name = Entity.display_name super_entity in
         Lazy.force start_update >>= fun () ->
         Commit_log.app (fun m -> m "≼ %s" super_name) >>= fun () ->
         if not config.Config.commit then Lwt.return_unit else
         Entity.force_dsub target_entity super_entity
-      end in
+      end
+    in
 
     let relax_super super_entity =
       if%lwt Entity.is_sub target_entity super_entity then begin
-        let%lwt super_name = Entity.display_name super_entity in
+        let* super_name = Entity.display_name super_entity in
         Lazy.force start_update >>= fun () ->
         Commit_log.app (fun m -> m "⋠ %s" super_name) >>= fun () ->
         if not config.Config.commit then Lwt.return_unit else
         Entity.relax_dsub target_entity super_entity
-      end in
+      end
+    in
 
     Lwt_list.iter_s force_super force_entities >>= fun () ->
     (match inclusion.Config.relax_super with
@@ -145,10 +150,11 @@ module Make (Arg : ARG) () : S = struct
      | Some relax_paths ->
         let relax_paths = Variable.expand_multi config ~lentry relax_paths in
         let relax_paths = List.map selector_of_string relax_paths in
-        let%lwt relax_entities = Lwt_list.map_s Entity.select relax_paths in
+        let* relax_entities = Lwt_list.map_s Entity.select relax_paths in
         let relax_entities = Entity.Set.empty
           |> List.fold Entity.Set.union relax_entities
-          |> List.fold Entity.Set.remove force_entities in
+          |> List.fold Entity.Set.remove force_entities
+        in
         Entity.Set.iter_s relax_super relax_entities)
 
   let update_entity ?(start_update = lazy Lwt.return_unit)
@@ -192,7 +198,7 @@ module Make (Arg : ARG) () : S = struct
 
   let process lr_value =
     let stats = Stats.create () in
-    let%lwt target_type = Entity_type.of_name_exn target.Config.entity_type in
+    let* target_type = Entity_type.of_name_exn target.Config.entity_type in
     Lwt_list.iter_s (process_entry config stats target target_type) lr_value
       >>= fun () ->
     Log.info (fun m -> m

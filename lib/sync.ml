@@ -17,6 +17,7 @@
 
 open Logging
 open Lwt.Infix
+open Lwt.Syntax
 open Unprime_list
 open Unprime_option
 
@@ -65,7 +66,8 @@ let connect config =
           ~authz:""
           ~creds:[]
           ~params:["gssapi-acceptor", ("ldap@" ^ ldap_host), false]
-          (module Sasl_mech_krb5)) in
+          (module Sasl_mech_krb5))
+  in
   Netldap.conn_bind ldap_conn bind_creds;
   ldap_conn
 
@@ -109,7 +111,8 @@ let rec process_scope
   let ldap_update_time_filter =
     (match scope.Config.ldap_update_time_filter with
      | Some _ as fit -> fit
-     | None -> config.Config.ldap_update_time_filter) in
+     | None -> config.Config.ldap_update_time_filter)
+  in
   let filter =
     (match period, ldap_update_time_filter with
      | (None, None), None -> filter
@@ -127,7 +130,8 @@ let rec process_scope
         let subfilters =
           [filter]
             |> Option.fold (List.cons % mk_time_filter fitI) tI
-            |> Option.fold (List.cons % mk_time_filter fitF) tF in
+            |> Option.fold (List.cons % mk_time_filter fitF) tF
+        in
         `And subfilters)
   in
   let filter =
@@ -163,7 +167,7 @@ let rec process_scope
     List.map get_conn scope.Config.target_names
   in
 
-  let%lwt lr =
+  let* lr =
     let attributes =
       String_set.empty
         |> List.fold (List.fold String_set.add % Target.ldap_attributes) targets
@@ -180,8 +184,8 @@ let rec process_scope
         ~attributes:(String_set.elements attributes))
       ()
   in
-  let process_targets lr_value =
-    Lwt_list.iter_p (fun target -> Target.process target lr_value) targets
+  let process_targets entries =
+    Lwt_list.iter_p (fun target -> Target.process target entries) targets
   in
   (match lr#code with
    | `Success ->
@@ -191,11 +195,11 @@ let rec process_scope
       Log.err (fun m ->
         m "Result for %s is incomplete due to time limit."
           scope_name) >>= fun () ->
-      begin
+      let+ () =
         if not scope.Config.partial_is_ok then Lwt.return_unit else
         process_targets lr#partial_value
-      end >>= fun () ->
-      Lwt.return_some (scope_name, `Time_limit_exceeded)
+      in
+      Some (scope_name, `Time_limit_exceeded)
    | `SizeLimitExceeded ->
       (match period, scope.Config.ldap_partition_attribute_type with
        | ((Some (tI, tzI) as tI'), (Some (tF, _) as tF')), _ when
@@ -232,11 +236,11 @@ let rec process_scope
           Log.err (fun m ->
             m "Result for %s is incomplete due to size limit." scope_name)
             >>= fun () ->
-          begin
+          let+ () =
             if not scope.Config.partial_is_ok then Lwt.return_unit else
             process_targets lr#partial_value
-          end >>= fun () ->
-          Lwt.return_some (scope_name, `Size_limit_exceeded))
+          in
+          Some (scope_name, `Size_limit_exceeded))
    | _ ->
       Log.err (fun m ->
         m "LDAP search for scope %s failed: %s" scope_name lr#diag_msg)
@@ -253,7 +257,7 @@ type error = (string * scope_error) list
 type time = Ptime.t * Ptime.tz_offset_s
 
 let process config ~scopes ~period () =
-  let%lwt ldap_conn = Lwt_preemptive.detach connect config in
+  let* ldap_conn = Lwt_preemptive.detach connect config in
   let target_cache = Hashtbl.create 3 in
   (match%lwt
     Lwt_list.filter_map_s

@@ -170,7 +170,8 @@ let mapping_parser =
     char '\\' *> satisfy (function '"' | '\\' -> true | _ -> false) in
   let str_frag =
         take_while1 (function '\\' | '"' -> false | _ -> true)
-    <|> (str_escape >>| String.make 1) in
+    <|> (str_escape >>| String.make 1)
+  in
   let str = char '"' *> (many str_frag >>| String.concat "") <* char '"' in
   let white = skip_while (function ' ' | '\t' | '\n' -> true | _ -> false) in
   let mapsto = white *> string "=>" *> white in
@@ -330,14 +331,16 @@ let of_inifile ini =
      | None, None -> Ldap_bind_anon
      | None, Some dn ->
         let password =
-          get ~default:"" ident ini "connection" "ldap_bind_password" in
+          get ~default:"" ident ini "connection" "ldap_bind_password"
+        in
         Ldap_bind_simple {dn; password}
      | Some "gssapi", None ->
         Ldap_bind_sasl_gssapi
      | Some "gssapi", Some _ ->
         error_f "Choosing the bind DN is unsupported for GSSAPI."
      | Some mech, _ ->
-        error_f "Unsupported SASL mechanism %s." mech) in
+        error_f "Unsupported SASL mechanism %s." mech)
+  in
   let cfg = {
     ldap_uri = get Uri.of_string ini "connection" "ldap_uri";
     ldap_bind;
