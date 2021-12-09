@@ -18,17 +18,20 @@
 open Ldap_types
 open Unprime_option
 
-type 'a generalized_filter =
-  [ `And of 'a generalized_filter list
+type attribute_type = string
+
+type 'a generalized_filter = [
+  | `And of 'a generalized_filter list
   | `Or of 'a generalized_filter list
   | `Not of 'a generalized_filter
-  | `Equality_match of string * 'a
-  | `Substrings of string * 'a option * 'a list * 'a option
-  | `Greater_or_equal of string * 'a
-  | `Less_or_equal of string * 'a
-  | `Present of string
-  | `Approx_match of string * 'a
-  | `Extensible_match of string option * string option * 'a * bool ]
+  | `Equality_match of attribute_type * 'a
+  | `Substrings of attribute_type * 'a option * 'a list * 'a option
+  | `Greater_or_equal of attribute_type * 'a
+  | `Less_or_equal of attribute_type * 'a
+  | `Present of attribute_type
+  | `Approx_match of attribute_type * 'a
+  | `Extensible_match of string option * string option * 'a * bool
+]
 
 type filter = string generalized_filter
 

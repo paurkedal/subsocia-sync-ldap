@@ -18,6 +18,22 @@
 open Lwt.Infix
 open Lwt.Syntax
 
+module Cfg = struct
+
+  type reporter =
+    | Stdio_reporter
+    | File_reporter of Template.t
+
+  type t = {
+    level: Logs.level option;
+    reporters: reporter list;
+  }
+  [@@deriving show]
+
+end
+
+open Cfg
+
 let main_src = Logs.Src.create "subsocia-sync-ldap"
 let commit_src = Logs.Src.create "subsocia-sync-ldap.commit"
 
@@ -56,11 +72,11 @@ let logs_reporter log_channels =
   in
   {Logs.report}
 
-let setup_logging config =
+let setup_logging bindings cfg =
 
   let open_log = function
-   | Config.Stdio_reporter -> Lwt.return [(Lwt_io.stdout, Lwt_io.stderr)]
-   | Config.File_reporter file_name_tmpl ->
+   | Stdio_reporter -> Lwt.return [(Lwt_io.stdout, Lwt_io.stderr)]
+   | File_reporter file_name_tmpl ->
       let aux file_name =
         let* oc =
           Lwt_io.open_file
@@ -69,10 +85,10 @@ let setup_logging config =
         in
         Lwt.return (oc, oc)
       in
-      Lwt_list.map_p aux (Variable.expand_multi config file_name_tmpl)
+      Lwt_list.map_p aux (Variable.expand_multi bindings file_name_tmpl)
   in
   let* log_channels =
-    Lwt_list.map_p open_log config.Config.log_reporters >|= List.flatten in
+    Lwt_list.map_p open_log cfg.reporters >|= List.flatten in
   Logs.set_reporter (logs_reporter log_channels);
-  Logs.set_level config.Config.log_level;
+  Logs.set_level cfg.level;
   Lwt.return_unit

@@ -1,5 +1,5 @@
 (* subsocia-sync-ldap - Synchonizing LDAP to Subsocia
- * Copyright (C) 2017  University of Copenhagen
+ * Copyright (C) 2017--2021  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,19 +15,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-(** Synchronizer *)
-
-type scope_error =
- [ `Search_failed
- | `Time_limit_exceeded
- | `Size_limit_exceeded ]
-
-type error = (string * scope_error) list
-
-type time = Ptime.t * Ptime.tz_offset_s
+type error = (string * Scope.error) list
 
 val process :
   Config.t ->
   scopes: string list ->
-  period: (time option * time option) ->
+  period: Scope.period ->
   unit -> (unit, error) result Lwt.t

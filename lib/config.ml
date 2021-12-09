@@ -16,56 +16,8 @@
  *)
 
 open Unprime
+open Unprime_list
 open Unprime_option
-module Dict = Map.Make (String)
-
-type ldap_attribute_type = string
-type ldap_dn = string
-type ldap_filter = Netldap.filter
-type ldap_filter_template = Netldapx.Filter_template.t
-
-type extract =
-  | Ldap_attribute of ldap_attribute_type
-  | Map_literal of string Dict.t * Template.t * bool
-  | Map_regexp of Re.re * (Re.Mark.t * int * Template.t) list * Template.t
-  [@@deriving show]
-
-type inclusion = {
-  relax_super: Template.t option;
-  force_super: Template.t;
-} [@@deriving show]
-
-type attribution = {
-  source: Template.t;
-  replace: (string * Template.t) list;
-} [@@deriving show]
-
-type target = {
-  subsocia_uri: Template.t;
-  ldap_attributes: string list;
-  entity_type: string;
-  entity_path: Template.t;
-  create_if_exists: Template.t option;
-  inclusions: inclusion list;
-  attributions: attribution list;
-} [@@deriving show]
-
-type scope = {
-  ldap_base_dn: ldap_dn;
-  ldap_scope: Netldap.scope;
-  ldap_filters: Netldap.filter list;
-  ldap_update_time_filter:
-    (ldap_filter_template * ldap_filter_template * string * int option) option;
-  ldap_partition_attribute_type: ldap_attribute_type option;
-  ldap_size_limit: int option;
-  ldap_time_limit: int option;
-  partial_is_ok: bool;
-  target_names: string list;
-} [@@deriving show]
-
-type log_reporter =
-  | Stdio_reporter
-  | File_reporter of Template.t
 
 type ldap_bind =
   | Ldap_bind_anon
@@ -77,16 +29,14 @@ type t = {
   ldap_uri: Uri.t;
   ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
-  ldap_update_time_filter:
-    (ldap_filter_template * ldap_filter_template * string * int option) option;
+  ldap_update_time_filter: Scope.Ldap_time_filter_cfg.t option;
   min_update_period: Ptime.Span.t;
   ldap_timeout: float option;
-  targets: target Dict.t;
-  scopes: scope Dict.t;
-  bindings: extract Dict.t;
+  targets: Target.Cfg.t Dict.t;
+  scopes: Scope.Cfg.t Dict.t;
+  bindings: Variable.bindings;
   commit: bool;
-  log_level: Logs.level option;
-  log_reporters: log_reporter list;
+  logging: Logging.Cfg.t;
 } [@@deriving show]
 
 exception Error of string
@@ -103,7 +53,7 @@ let add_target target_name target cfg =
 let add_scope scope_name scope cfg =
   if Dict.mem scope_name cfg.scopes then
     error_f "Scope %s is already defined." scope_name;
-  scope.target_names |> List.iter begin fun target_name ->
+  scope.Scope.Cfg.target_names |> List.iter begin fun target_name ->
     if not (Dict.mem target_name cfg.targets) then
       error_f "Scope %s refers to undefined target %s." scope_name target_name
   end;
@@ -226,7 +176,7 @@ let time_zone_s_of_string s =
 
 (* Config from .ini *)
 
-let target_of_inifile ini section = {
+let target_of_inifile ini section = Target.Cfg.{
   subsocia_uri = get Template.of_string ini section "subsocia_uri";
   ldap_attributes = get_list (fun s -> s) ini section "ldap_attribute";
   entity_type = get ident ini section "entity_type";
@@ -236,7 +186,7 @@ let target_of_inifile ini section = {
   attributions = [];
 }
 
-let inclusion_of_inifile ini section = {
+let inclusion_of_inifile ini section = Target.Cfg.{
   relax_super = get_opt Template.of_string ini section "relax_super";
   force_super = get Template.of_string ini section "force_super";
 }
@@ -248,7 +198,7 @@ let attribution_of_inifile ini section =
     let tmpl = Template.of_string (String.sub s (i + 1) (n - i - 1)) in
     (String.sub s 0 i, tmpl)
   in
-  {
+  Target.Cfg.{
     source = get Template.of_string ini section "source";
     replace = get_list attr_of_string ini section "replace";
   }
@@ -257,18 +207,18 @@ let literal_mapping_of_inifile ini section =
   let input = get ident ini section "input" in
   let mapping = get_literal_mapping ini section "case" in
   let passthrough = get bool_of_string ini section "passthrough" in
-  Map_literal (mapping, Template.of_string input, passthrough)
+  Variable.Map_literal (mapping, Template.of_string input, passthrough)
 
 let regexp_mapping_of_inifile ini section =
   let input = get ident ini section "input" in
   let re, mapping = get_regexp_mapping ini section "case" in
-  Map_regexp (re, mapping, Template.of_string input)
+  Variable.Map_regexp (re, mapping, Template.of_string input)
 
 let ldap_attribute_of_inifile ini section =
   let ldap_attribute_type = get ident ini section "ldap_attribute_type" in
-  Ldap_attribute ldap_attribute_type
+  Variable.Ldap_attribute ldap_attribute_type
 
-let extract_of_inifile ini section =
+let bindings_of_inifile ini section =
   (match get ident ini section "method" with
    | "mapping" -> literal_mapping_of_inifile ini section
    | "regexp" -> regexp_mapping_of_inifile ini section
@@ -276,6 +226,7 @@ let extract_of_inifile ini section =
    | meth -> error_f "Invalid variable method %s." meth)
 
 let ldap_update_time_filter_of_inifile ini section =
+  let open Scope.Ldap_time_filter_cfg in
   let time_zone =
     get_opt time_zone_s_of_string ini section "ldap_update_time_zone" in
   (match
@@ -288,14 +239,16 @@ let ldap_update_time_filter_of_inifile ini section =
    | None, None, _ -> None
    | Some _, _, None | _, Some _, None ->
       failwith "Time format must be provided when using time filters."
-   | Some qB, Some qE, Some time_format ->
-      Some (qB, qE, time_format, time_zone)
-   | Some qB, None, Some time_format ->
-      Some (qB, Netldapx.Filter_template.neg qB, time_format, time_zone)
-   | None, Some qE, Some time_format ->
-      Some (Netldapx.Filter_template.neg qE, qE, time_format, time_zone))
+   | Some start_template, Some stop_template, Some time_format ->
+      Some {start_template; stop_template; time_format; time_zone}
+   | Some start_template, None, Some time_format ->
+      let stop_template = Netldapx.Filter_template.neg start_template in
+      Some {start_template; stop_template; time_format; time_zone}
+   | None, Some stop_template, Some time_format ->
+      let start_template = Netldapx.Filter_template.neg stop_template in
+      Some {start_template; stop_template; time_format; time_zone})
 
-let scope_of_inifile ini section = {
+let scope_of_inifile ini section = Scope.Cfg.{
   ldap_base_dn = get ident ini section "ldap_base_dn";
   ldap_scope =
     Option.get_or `Sub
@@ -317,6 +270,7 @@ let log_level_of_string s =
    | Error (`Msg msg) -> failwith msg)
 
 let log_reporters_of_inifile ini =
+  let open Logging.Cfg in
   (match get_opt Template.of_string ini "logger" "file",
          get_opt bool_of_string ini "logger" "stdio" with
    | None, Some false -> []
@@ -356,8 +310,10 @@ let of_inifile ini =
     targets = Dict.empty;
     scopes = Dict.empty;
     commit = get bool_of_string ini "connection" "commit";
-    log_level = get log_level_of_string ~default:None ini "logger" "level";
-    log_reporters = log_reporters_of_inifile ini;
+    logging = Logging.Cfg.{
+      level = get log_level_of_string ~default:None ini "logger" "level";
+      reporters = log_reporters_of_inifile ini;
+    };
   } in
   let process_target_section cfg section =
     (match String.split_on_char ':' section with
@@ -375,7 +331,7 @@ let of_inifile ini =
         add_attribution target_name attribution_name
           (attribution_of_inifile ini section) cfg
      | ["var"; variable] ->
-        add_binding variable (extract_of_inifile ini section) cfg
+        add_binding variable (bindings_of_inifile ini section) cfg
      | ["scope"; variable] ->
         add_scope variable (scope_of_inifile ini section) cfg
      | ["target"; _] | ["connection"] | ["logger"] -> cfg

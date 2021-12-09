@@ -17,6 +17,7 @@
 
 (** Supplements to [Netldap]. *)
 
+type attribute_type = string
 type filter = Netldap.filter
 
 val scope_of_string : string -> Netldap.scope

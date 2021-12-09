@@ -15,10 +15,34 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+module Cfg : sig
+
+  type inclusion = {
+    relax_super: Template.t option;
+    force_super: Template.t;
+  } [@@deriving show]
+
+  type attribution = {
+    source: Template.t;
+    replace: (string * Template.t) list;
+  } [@@deriving show]
+
+  type t = {
+    subsocia_uri: Template.t;
+    ldap_attributes: string list;
+    entity_type: string;
+    entity_path: Template.t;
+    create_if_exists: Template.t option;
+    inclusions: inclusion list;
+    attributions: attribution list;
+  } [@@deriving show]
+
+end
+
 type t
 
-val connect : Config.t -> string -> t
+val connect : Variable.bindings -> Cfg.t -> t
 
 val ldap_attributes : t -> string list
 
-val process : t -> Netldap.search_result list -> unit Lwt.t
+val process : commit: bool -> t -> Netldap.search_result list -> unit Lwt.t

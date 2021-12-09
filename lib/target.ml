@@ -21,6 +21,30 @@ open Lwt.Syntax
 open Subsocia_common
 open Unprime_list
 
+module Cfg = struct
+
+  type inclusion = {
+    relax_super: Template.t option;
+    force_super: Template.t;
+  } [@@deriving show]
+
+  type attribution = {
+    source: Template.t;
+    replace: (string * Template.t) list;
+  } [@@deriving show]
+
+  type t = {
+    subsocia_uri: Template.t;
+    ldap_attributes: string list;
+    entity_type: string;
+    entity_path: Template.t;
+    create_if_exists: Template.t option;
+    inclusions: inclusion list;
+    attributions: attribution list;
+  } [@@deriving show]
+
+end
+
 let selector_of_string s =
   (try Subsocia_selector.selector_of_string s with
    | Invalid_argument _ -> Fmt.failwith "Invalid selector %s." s)
@@ -40,21 +64,21 @@ end
 
 module type S = sig
   val ldap_attributes : string list
-  val process : Netldap.search_result list -> unit Lwt.t
+  val process : commit: bool -> Netldap.search_result list -> unit Lwt.t
 end
 
 module type ARG = sig
-  val config : Config.t
-  val target : Config.target
+  val bindings : Variable.bindings
+  val cfg : Cfg.t
 end
 
 module Make (Arg : ARG) () : S = struct
   open Arg
+  open Cfg
 
-  let uri =
-    Uri.of_string (Variable.expand_single config target.Config.subsocia_uri)
+  let uri = Uri.of_string (Variable.expand_single bindings cfg.subsocia_uri)
 
-  let ldap_attributes = target.Config.ldap_attributes
+  let ldap_attributes = cfg.ldap_attributes
 
   module Subsocia_conn = (val Subsocia_connection.connect uri)
   open Subsocia_conn
@@ -84,15 +108,16 @@ module Make (Arg : ARG) () : S = struct
     in
     entity
 
-  let process_attribution ~start_update config lentry target_entity attribution =
+  let process_attribution ~commit ~start_update
+        lentry target_entity attribution =
     let source_path_str =
-      Variable.expand_single config ~lentry attribution.Config.source in
+      Variable.expand_single bindings ~lentry attribution.source in
     let source_path = selector_of_string source_path_str in
     let* source_entity = Entity.select_one source_path in
     let replace (atn, tmpl) =
       let* Attribute_type.Any at = Attribute_type.any_of_name_exn atn in
       let vt = Attribute_type.value_type at in
-      let values_str = Variable.expand_multi config ~lentry tmpl in
+      let values_str = Variable.expand_multi bindings ~lentry tmpl in
       let values = List.map (Value.typed_of_string vt) values_str in
       let values = Values.of_elements vt values in
       let* old_values = Entity.get_values at source_entity target_entity in
@@ -103,10 +128,10 @@ module Make (Arg : ARG) () : S = struct
         m "- %s %s ↦ %s" atn
           (Values.to_json_string vt old_values)
           (Values.to_json_string vt values)) >>= fun () ->
-      if not config.Config.commit then Lwt.return_unit else
+      if not commit then Lwt.return_unit else
       Entity.set_values at values source_entity target_entity
     in
-    Lwt_list.iter_s replace attribution.Config.replace
+    Lwt_list.iter_s replace attribution.replace
 
   let select_or_warn sel =
     (match%lwt Entity.select_opt sel with
@@ -118,9 +143,9 @@ module Make (Arg : ARG) () : S = struct
      | Some ent ->
         Lwt.return_some ent)
 
-  let process_inclusion ~start_update config lentry target_entity inclusion =
+  let process_inclusion ~commit ~start_update lentry target_entity inclusion =
     let force_paths =
-      Variable.expand_multi config ~lentry inclusion.Config.force_super in
+      Variable.expand_multi bindings ~lentry inclusion.force_super in
     let force_paths = List.map selector_of_string force_paths in
     let* force_entities = Lwt_list.filter_map_s select_or_warn force_paths in
 
@@ -129,7 +154,7 @@ module Make (Arg : ARG) () : S = struct
         let* super_name = Entity.display_name super_entity in
         Lazy.force start_update >>= fun () ->
         Commit_log.app (fun m -> m "≼ %s" super_name) >>= fun () ->
-        if not config.Config.commit then Lwt.return_unit else
+        if not commit then Lwt.return_unit else
         Entity.force_dsub target_entity super_entity
       end
     in
@@ -139,16 +164,16 @@ module Make (Arg : ARG) () : S = struct
         let* super_name = Entity.display_name super_entity in
         Lazy.force start_update >>= fun () ->
         Commit_log.app (fun m -> m "⋠ %s" super_name) >>= fun () ->
-        if not config.Config.commit then Lwt.return_unit else
+        if not commit then Lwt.return_unit else
         Entity.relax_dsub target_entity super_entity
       end
     in
 
     Lwt_list.iter_s force_super force_entities >>= fun () ->
-    (match inclusion.Config.relax_super with
+    (match inclusion.relax_super with
      | None -> Lwt.return_unit
      | Some relax_paths ->
-        let relax_paths = Variable.expand_multi config ~lentry relax_paths in
+        let relax_paths = Variable.expand_multi bindings ~lentry relax_paths in
         let relax_paths = List.map selector_of_string relax_paths in
         let* relax_entities = Lwt_list.map_s Entity.select relax_paths in
         let relax_entities = Entity.Set.empty
@@ -157,49 +182,49 @@ module Make (Arg : ARG) () : S = struct
         in
         Entity.Set.iter_s relax_super relax_entities)
 
-  let update_entity ?(start_update = lazy Lwt.return_unit)
-                    config lentry target target_entity =
+  let update_entity ~commit ?(start_update = lazy Lwt.return_unit)
+                    lentry cfg target_entity =
     Lwt_list.iter_s
-      (process_attribution ~start_update config lentry target_entity)
-      target.Config.attributions >>= fun () ->
+      (process_attribution ~commit ~start_update lentry target_entity)
+      cfg.attributions >>= fun () ->
     Lwt_list.iter_s
-      (process_inclusion ~start_update config lentry target_entity)
-      target.Config.inclusions
+      (process_inclusion ~commit ~start_update lentry target_entity)
+      cfg.inclusions
 
-  let check_create_condition config lentry target =
-    (match target.Config.create_if_exists with
+  let check_create_condition lentry =
+    (match cfg.create_if_exists with
      | None -> true
-     | Some tmpl -> Variable.expand_multi config ~lentry tmpl != [])
+     | Some tmpl -> Variable.expand_multi bindings ~lentry tmpl != [])
 
-  let process_entry config stats target target_type = function
+  let process_entry ~commit stats cfg target_type = function
    | `Reference _ -> assert false
    | `Entry ((dn, _) as lentry) ->
       let target_path_str =
-        Variable.expand_single config ~lentry target.Config.entity_path in
+        Variable.expand_single bindings ~lentry cfg.entity_path in
       let target_path = selector_of_string target_path_str in
       Log.debug (fun m -> m "Processing %s => %s" dn target_path_str)
         >>= fun () ->
       (match%lwt Entity.select_opt target_path with
        | None ->
-          if check_create_condition config lentry target then begin
+          if check_create_condition lentry then begin
             Stats.(stats.create_count <- stats.create_count + 1);
             Commit_log.app (fun m -> m "N %s ↦ %s" dn target_path_str)
               >>= fun () ->
-            if not config.Config.commit then Lwt.return_unit else
+            if not commit then Lwt.return_unit else
             create_entity target_path target_type >>=
-            update_entity config lentry target
+            update_entity ~commit lentry cfg
           end else Lwt.return_unit
        | Some target_entity ->
           let start_update = lazy begin
             Stats.(stats.update_count <- stats.update_count + 1);
             Commit_log.app (fun m -> m "U %s ↦ %s" dn target_path_str)
           end in
-          update_entity ~start_update config lentry target target_entity)
+          update_entity ~commit ~start_update lentry cfg target_entity)
 
-  let process lr_value =
+  let process ~commit lr_value =
     let stats = Stats.create () in
-    let* target_type = Entity_type.of_name_exn target.Config.entity_type in
-    Lwt_list.iter_s (process_entry config stats target target_type) lr_value
+    let* target_type = Entity_type.of_name_exn cfg.entity_type in
+    Lwt_list.iter_s (process_entry ~commit stats cfg target_type) lr_value
       >>= fun () ->
     Log.info (fun m -> m
       "Processed %d LDAP entries, %a." (List.length lr_value) Stats.pp stats)
@@ -207,10 +232,9 @@ end
 
 type t = (module S)
 
-let connect config target_name =
-  let target = Config.Dict.find target_name config.Config.targets in
-  (module Make (struct let config = config let target = target end) () : S)
+let connect bindings cfg =
+  (module Make (struct let bindings = bindings let cfg = cfg end) () : S)
 
 let ldap_attributes (module C : S) = C.ldap_attributes
 
-let process (module C : S) entries = C.process entries
+let process ~commit (module C : S) entries = C.process ~commit entries

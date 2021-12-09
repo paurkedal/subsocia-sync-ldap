@@ -17,8 +17,18 @@
 
 (** Template and Variable Expansion *)
 
+type ldap_attribute_type = Netldapx.attribute_type
+
+type extraction =
+  | Ldap_attribute of ldap_attribute_type
+  | Map_literal of string Dict.t * Template.t * bool
+  | Map_regexp of Re.re * (Re.Mark.t * int * Template.t) list * Template.t
+  [@@deriving show]
+
+type bindings = extraction Dict.t
+
 val expand_multi :
-  Config.t -> ?lentry: Netldapx.ldap_entry -> Template.t -> string list
+  bindings -> ?lentry: Netldapx.ldap_entry -> Template.t -> string list
 
 val expand_single :
-  Config.t -> ?lentry: Netldapx.ldap_entry -> Template.t -> string
+  bindings -> ?lentry: Netldapx.ldap_entry -> Template.t -> string

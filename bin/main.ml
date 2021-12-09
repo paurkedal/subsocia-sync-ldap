@@ -36,14 +36,16 @@ let main config_file scopes commit filters period =
   let config =
     Config.{config with ldap_filters = config.ldap_filters @ filters} in
   let missing_scopes =
-    List.filter (fun name -> not (Config.Dict.mem name config.Config.scopes))
-                scopes in
+    List.filter
+      (fun name -> not (Dict.mem name config.Config.scopes))
+      scopes
+  in
   if missing_scopes <> [] then
     failwith_f "The requested scope %s is not defined in %s."
                (String.concat ", " missing_scopes) config_file;
 
   (* Set up logging. *)
-  Logging.setup_logging config >>= fun () ->
+  Logging.setup_logging config.bindings config.logging >>= fun () ->
 
   (* Do the synchronization. *)
   (match%lwt Sync.process config ~scopes ~period () with

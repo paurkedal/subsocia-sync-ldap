@@ -15,8 +15,17 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-open Config
 open Unprime_list
+
+type ldap_attribute_type = Netldapx.attribute_type
+
+type extraction =
+  | Ldap_attribute of ldap_attribute_type
+  | Map_literal of string Dict.t * Template.t * bool
+  | Map_regexp of Re.re * (Re.Mark.t * int * Template.t) list * Template.t
+  [@@deriving show]
+
+type bindings = extraction Dict.t
 
 let route_regexp re mapping x =
   (match Re.exec_opt re x with
@@ -36,7 +45,7 @@ let route_regexp re mapping x =
       in
       Some (loop 0 mapping))
 
-let rec lookup_multi cfg ?lentry var =
+let rec lookup_multi bindings ?lentry var =
   (match String.split_on_char ':' var with
    | ["env"; var] ->
       (match String.split_on_char '=' var with
@@ -47,7 +56,7 @@ let rec lookup_multi cfg ?lentry var =
        | _ ->
           Fmt.failwith "Multiple defaults in environment variable reference.")
    | ["var"; var] | [var] ->
-      (match Dict.find var cfg.bindings with
+      (match Dict.find var bindings with
        | exception Not_found ->
           Fmt.failwith "Undefined variable %s." var
        | Ldap_attribute at ->
@@ -58,21 +67,21 @@ let rec lookup_multi cfg ?lentry var =
               Fmt.failwith
                 "LDAP lookups like %s are only valid in target contexts." var)
        | Map_literal (d, tmpl, true) ->
-          expand_multi cfg ?lentry tmpl
+          expand_multi bindings ?lentry tmpl
             |> List.map (fun x -> try Dict.find x d with Not_found -> x)
        | Map_literal (d, tmpl, false) ->
-          expand_multi cfg ?lentry tmpl
+          expand_multi bindings ?lentry tmpl
             |> List.filter_map
                 (fun x -> try Some (Dict.find x d) with Not_found -> None)
        | Map_regexp (re, mapping, tmpl) ->
-          expand_multi cfg ?lentry tmpl
+          expand_multi bindings ?lentry tmpl
             |> List.filter_map (route_regexp re mapping)
-            |> List.flatten_map (expand_multi cfg ?lentry))
+            |> List.flatten_map (expand_multi bindings ?lentry))
    | _ ->
       Fmt.failwith "Invalid variable form %s." var)
 
-and lookup_single cfg ?lentry ~tmpl var =
-  (match lookup_multi cfg ?lentry var with
+and lookup_single bindings ?lentry ~tmpl var =
+  (match lookup_multi bindings ?lentry var with
    | [x] -> x
    | [] ->
       Fmt.failwith "Cannot substitute undefined %s into %S."
@@ -81,10 +90,10 @@ and lookup_single cfg ?lentry ~tmpl var =
       Fmt.failwith "Cannot substitute multi-valued %s into %S."
                    var (Template.to_string tmpl))
 
-and expand_multi cfg ?lentry tmpl =
+and expand_multi bindings ?lentry tmpl =
   Template.expand_fold
-    (fun var f -> List.fold f (lookup_multi cfg ?lentry var))
+    (fun var f -> List.fold f (lookup_multi bindings ?lentry var))
     List.cons tmpl []
 
-and expand_single cfg ?lentry tmpl =
-  Template.expand (lookup_single cfg ?lentry ~tmpl) tmpl
+and expand_single bindings ?lentry tmpl =
+  Template.expand (lookup_single bindings ?lentry ~tmpl) tmpl
