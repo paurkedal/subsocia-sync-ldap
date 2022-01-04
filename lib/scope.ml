@@ -75,7 +75,6 @@ module Cfg = struct
     partial_is_ok: bool;
     target_names: string list;
   }
-  [@@deriving show]
 end
 
 open Cfg

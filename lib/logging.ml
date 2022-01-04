@@ -28,7 +28,6 @@ module Cfg = struct
     level: Logs.level option;
     reporters: reporter list;
   }
-  [@@deriving show]
 
 end
 

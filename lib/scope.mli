@@ -47,7 +47,6 @@ module Cfg : sig
     partial_is_ok: bool;
     target_names: string list;
   }
-  [@@deriving show]
 end
 
 val process :

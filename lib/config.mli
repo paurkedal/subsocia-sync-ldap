@@ -21,7 +21,6 @@ type ldap_bind =
   | Ldap_bind_anon
   | Ldap_bind_simple of {dn: string; password: string}
   | Ldap_bind_sasl_gssapi
-  [@@deriving show]
 
 type t = {
   ldap_uri: Uri.t;
@@ -35,7 +34,7 @@ type t = {
   bindings: Variable.extraction Dict.t;
   commit: bool;
   logging: Logging.Cfg.t;
-} [@@deriving show]
+}
 
 exception Error of string
 

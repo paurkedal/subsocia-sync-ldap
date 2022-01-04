@@ -20,12 +20,12 @@ module Cfg : sig
   type inclusion = {
     relax_super: Template.t option;
     force_super: Template.t;
-  } [@@deriving show]
+  }
 
   type attribution = {
     source: Template.t;
     replace: (string * Template.t) list;
-  } [@@deriving show]
+  }
 
   type t = {
     subsocia_uri: Template.t;
@@ -35,7 +35,7 @@ module Cfg : sig
     create_if_exists: Template.t option;
     inclusions: inclusion list;
     attributions: attribution list;
-  } [@@deriving show]
+  }
 
 end
 

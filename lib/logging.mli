@@ -25,7 +25,6 @@ module Cfg : sig
     level: Logs.level option;
     reporters: reporter list;
   }
-  [@@deriving show]
 
 end
 

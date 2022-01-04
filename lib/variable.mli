@@ -23,7 +23,6 @@ type extraction =
   | Ldap_attribute of ldap_attribute_type
   | Map_literal of string Dict.t * Template.t * bool
   | Map_regexp of Re.re * (Re.Mark.t * int * Template.t) list * Template.t
-  [@@deriving show]
 
 type bindings = extraction Dict.t
 
