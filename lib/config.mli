@@ -31,7 +31,7 @@ type t = {
   ldap_timeout: float option;
   targets: Target.Cfg.t Dict.t;
   scopes: Scope.Cfg.t Dict.t;
-  bindings: Variable.extraction Dict.t;
+  template_env: Template_env.t;
   commit: bool;
   logging: Logging.Cfg.t;
 }

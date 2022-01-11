@@ -68,7 +68,7 @@ module type S = sig
 end
 
 module type ARG = sig
-  val bindings : Variable.bindings
+  val template_env : Template_env.t
   val cfg : Cfg.t
 end
 
@@ -76,7 +76,8 @@ module Make (Arg : ARG) () : S = struct
   open Arg
   open Cfg
 
-  let uri = Uri.of_string (Variable.expand_single bindings cfg.subsocia_uri)
+  let uri =
+    Uri.of_string (Template_env.expand_single template_env cfg.subsocia_uri)
 
   let ldap_attributes = cfg.ldap_attributes
 
@@ -111,13 +112,13 @@ module Make (Arg : ARG) () : S = struct
   let process_attribution ~commit ~start_update
         lentry target_entity attribution =
     let source_path_str =
-      Variable.expand_single bindings ~lentry attribution.source in
+      Template_env.expand_single template_env ~lentry attribution.source in
     let source_path = selector_of_string source_path_str in
     let* source_entity = Entity.select_one source_path in
     let replace (atn, tmpl) =
       let* Attribute_type.Any at = Attribute_type.any_of_name_exn atn in
       let vt = Attribute_type.value_type at in
-      let values_str = Variable.expand_multi bindings ~lentry tmpl in
+      let values_str = Template_env.expand_multi template_env ~lentry tmpl in
       let values = List.map (Value.typed_of_string vt) values_str in
       let values = Values.of_elements vt values in
       let* old_values = Entity.get_values at source_entity target_entity in
@@ -145,7 +146,7 @@ module Make (Arg : ARG) () : S = struct
 
   let process_inclusion ~commit ~start_update lentry target_entity inclusion =
     let force_paths =
-      Variable.expand_multi bindings ~lentry inclusion.force_super in
+      Template_env.expand_multi template_env ~lentry inclusion.force_super in
     let force_paths = List.map selector_of_string force_paths in
     let* force_entities = Lwt_list.filter_map_s select_or_warn force_paths in
 
@@ -173,7 +174,8 @@ module Make (Arg : ARG) () : S = struct
     (match inclusion.relax_super with
      | None -> Lwt.return_unit
      | Some relax_paths ->
-        let relax_paths = Variable.expand_multi bindings ~lentry relax_paths in
+        let relax_paths =
+          Template_env.expand_multi template_env ~lentry relax_paths in
         let relax_paths = List.map selector_of_string relax_paths in
         let* relax_entities = Lwt_list.map_s Entity.select relax_paths in
         let relax_entities = Entity.Set.empty
@@ -194,13 +196,13 @@ module Make (Arg : ARG) () : S = struct
   let check_create_condition lentry =
     (match cfg.create_if_exists with
      | None -> true
-     | Some tmpl -> Variable.expand_multi bindings ~lentry tmpl != [])
+     | Some tmpl -> Template_env.expand_multi template_env ~lentry tmpl != [])
 
   let process_entry ~commit stats cfg target_type = function
    | `Reference _ -> assert false
    | `Entry ((dn, _) as lentry) ->
       let target_path_str =
-        Variable.expand_single bindings ~lentry cfg.entity_path in
+        Template_env.expand_single template_env ~lentry cfg.entity_path in
       let target_path = selector_of_string target_path_str in
       Log.debug (fun m -> m "Processing %s => %s" dn target_path_str)
         >>= fun () ->
@@ -232,8 +234,8 @@ end
 
 type t = (module S)
 
-let connect bindings cfg =
-  (module Make (struct let bindings = bindings let cfg = cfg end) () : S)
+let connect template_env cfg =
+  (module Make (struct let template_env = template_env let cfg = cfg end) () : S)
 
 let ldap_attributes (module C : S) = C.ldap_attributes
 

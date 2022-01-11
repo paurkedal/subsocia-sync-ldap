@@ -24,10 +24,10 @@ type extraction =
   | Map_literal of string Dict.t * Template.t * bool
   | Map_regexp of Re.re * (Re.Mark.t * int * Template.t) list * Template.t
 
-type bindings = extraction Dict.t
+type t = extraction Dict.t
 
 val expand_multi :
-  bindings -> ?lentry: Netldapx.ldap_entry -> Template.t -> string list
+  t -> ?lentry: Netldapx.ldap_entry -> Template.t -> string list
 
 val expand_single :
-  bindings -> ?lentry: Netldapx.ldap_entry -> Template.t -> string
+  t -> ?lentry: Netldapx.ldap_entry -> Template.t -> string

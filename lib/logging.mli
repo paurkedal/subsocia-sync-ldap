@@ -31,4 +31,4 @@ end
 module Log : Logs_lwt.LOG
 module Commit_log : Logs_lwt.LOG
 
-val setup_logging : Variable.bindings -> Cfg.t -> unit Lwt.t
+val setup_logging : Template_env.t -> Cfg.t -> unit Lwt.t

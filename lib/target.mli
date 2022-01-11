@@ -41,7 +41,7 @@ end
 
 type t
 
-val connect : Variable.bindings -> Cfg.t -> t
+val connect : Template_env.t -> Cfg.t -> t
 
 val ldap_attributes : t -> string list
 

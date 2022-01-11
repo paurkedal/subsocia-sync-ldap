@@ -45,7 +45,7 @@ let main config_file scopes commit filters period =
                (String.concat ", " missing_scopes) config_file;
 
   (* Set up logging. *)
-  Logging.setup_logging config.bindings config.logging >>= fun () ->
+  Logging.setup_logging config.template_env config.logging >>= fun () ->
 
   (* Do the synchronization. *)
   (match%lwt Sync.process config ~scopes ~period () with

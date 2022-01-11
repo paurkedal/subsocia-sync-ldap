@@ -70,7 +70,7 @@ let process config ~scopes ~period () =
         try Hashtbl.find target_cache target_name
         with Not_found ->
           let target_cfg = Dict.find target_name config.Config.targets in
-          let conn = Target.connect config.bindings target_cfg in
+          let conn = Target.connect config.template_env target_cfg in
           Hashtbl.add target_cache target_name conn;
           conn
       in

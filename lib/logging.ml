@@ -84,7 +84,7 @@ let setup_logging bindings cfg =
         in
         Lwt.return (oc, oc)
       in
-      Lwt_list.map_p aux (Variable.expand_multi bindings file_name_tmpl)
+      Lwt_list.map_p aux (Template_env.expand_multi bindings file_name_tmpl)
   in
   let* log_channels =
     Lwt_list.map_p open_log cfg.reporters >|= List.flatten in

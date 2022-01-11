@@ -33,7 +33,7 @@ type t = {
   ldap_timeout: float option;
   targets: Target.Cfg.t Dict.t;
   scopes: Scope.Cfg.t Dict.t;
-  bindings: Variable.bindings;
+  template_env: Template_env.t;
   commit: bool;
   logging: Logging.Cfg.t;
 }
@@ -78,10 +78,10 @@ let add_inclusion target_name inclusion_name inclusion cfg =
             target_name inclusion_name
 
 let add_binding variable extract cfg =
-  if Dict.mem variable cfg.bindings then
+  if Dict.mem variable cfg.template_env then
     error_f "Multiple definitions of %s." variable
   else
-    {cfg with bindings = Dict.add variable extract cfg.bindings}
+    {cfg with template_env = Dict.add variable extract cfg.template_env}
 
 (* Inifile Getters and Parsers *)
 
@@ -206,16 +206,16 @@ let literal_mapping_of_inifile ini section =
   let input = get ident ini section "input" in
   let mapping = get_literal_mapping ini section "case" in
   let passthrough = get bool_of_string ini section "passthrough" in
-  Variable.Map_literal (mapping, Template.of_string input, passthrough)
+  Template_env.Map_literal (mapping, Template.of_string input, passthrough)
 
 let regexp_mapping_of_inifile ini section =
   let input = get ident ini section "input" in
   let re, mapping = get_regexp_mapping ini section "case" in
-  Variable.Map_regexp (re, mapping, Template.of_string input)
+  Template_env.Map_regexp (re, mapping, Template.of_string input)
 
 let ldap_attribute_of_inifile ini section =
   let ldap_attribute_type = get ident ini section "ldap_attribute_type" in
-  Variable.Ldap_attribute ldap_attribute_type
+  Template_env.Ldap_attribute ldap_attribute_type
 
 let bindings_of_inifile ini section =
   (match get ident ini section "method" with
@@ -305,7 +305,7 @@ let of_inifile ini =
       get ptime_span_of_string ~default:(Ptime.Span.of_int_s 1) ini "connection"
           "min_update_period";
     ldap_timeout = get_opt float_of_string ini "connection" "ldap_timeout";
-    bindings = Dict.empty;
+    template_env = Dict.empty;
     targets = Dict.empty;
     scopes = Dict.empty;
     commit = get bool_of_string ini "connection" "commit";
