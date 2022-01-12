@@ -15,6 +15,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+val ( let*? ) :
+  ('a, 'e) result Lwt.t -> ('a -> ('b, 'e) result Lwt.t) ->
+  ('b, 'e) result Lwt.t
+
+val ( let+? ) : ('a, 'e) result Lwt.t -> ('a -> 'b) -> ('b, 'e) result Lwt.t
+
 val (>>=?) :
   ('a, 'e) result Lwt.t -> ('a -> ('b, 'e) result Lwt.t) ->
   ('b, 'e) result Lwt.t

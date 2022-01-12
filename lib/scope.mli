@@ -24,7 +24,10 @@ type ldap_filter_template = Netldapx.Filter_template.t
 
 type time = Ptime.t * Ptime.tz_offset_s
 type period = time option * time option
-type error = [`Search_failed | `Time_limit_exceeded | `Size_limit_exceeded]
+type error = [
+  | `Search_failed | `Time_limit_exceeded | `Size_limit_exceeded
+  | `Msg of string
+]
 
 module Ldap_time_filter_cfg : sig
   type t = {
@@ -59,4 +62,5 @@ val process :
   scope_name: string ->
   scope_cfg: Cfg.t ->
   targets: Target.t list ->
+  ?csn_directory_state: Csn_state.Directory.t ->
   unit -> (unit, error) result Lwt.t

@@ -26,6 +26,7 @@ type t = {
   ldap_uri: Uri.t;
   ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
+  ldap_csn_state_cfg: Csn_state.Cfg.t option;
   ldap_update_time_filter: Scope.Ldap_time_filter_cfg.t option;
   min_update_period: Ptime.Span.t;
   ldap_timeout: float option;

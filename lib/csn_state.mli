@@ -1,5 +1,5 @@
 (* subsocia-sync-ldap - Synchonizing LDAP to Subsocia
- * Copyright (C) 2021  University of Copenhagen
+ * Copyright (C) 2022  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,6 +15,29 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-let ( let*? ) = Lwt_result.Syntax.( let* )
-let ( let+? ) = Lwt_result.Syntax.( let+ )
-let (>>=?) = Lwt_result.Infix.(>>=)
+module Cfg : sig
+
+  type t = {
+    csn_state_dir: string;
+    csn_context_base_dn: string;
+    csn_context_attribute_type: string;
+    csn_entry_attribute_type: string;
+  }
+
+end
+
+module Directory : sig
+  type t
+
+  val load : Cfg.t -> string -> Netldap.ldap_connection -> t Lwt.t
+
+  val context_csn : t -> string
+end
+
+type t
+
+val load : Directory.t -> Netldap.filter -> (t, [> `Msg of string]) result Lwt.t
+
+val save : commit: bool -> t -> (unit, [> `Msg of string]) result Lwt.t
+
+val filter : t -> Netldap.filter

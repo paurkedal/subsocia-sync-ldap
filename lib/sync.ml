@@ -62,6 +62,13 @@ let connect_ldap config =
 
 let process config ~scopes ~period () =
   let* ldap_conn = Lwt_preemptive.detach connect_ldap config in
+  let* csn_directory_state =
+    (match config.Config.ldap_csn_state_cfg with
+     | None -> Lwt.return_none
+     | Some cfg ->
+        let server_id = Uri.to_string config.Config.ldap_uri in
+        Csn_state.Directory.load cfg server_id ldap_conn >|= Option.some)
+  in
   let target_cache = Hashtbl.create 3 in
   let process_scope scope_name =
     let scope_cfg = Dict.find scope_name config.Config.scopes in
@@ -82,6 +89,7 @@ let process config ~scopes ~period () =
       ~default_ldap_update_time_filter:config.Config.ldap_update_time_filter
       ~min_update_period:config.Config.min_update_period
       ~scope_name ~scope_cfg ~targets
+      ?csn_directory_state
       () >|=
     (function
      | Ok () -> None

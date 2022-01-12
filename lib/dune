@@ -3,11 +3,14 @@
   (preprocess (pps ppx_compose lwt_ppx ppx_regexp))
   (libraries
     angstrom
+    cstruct
     fmt
+    hex
     inifiles
     ldap
     logs logs.lwt
     lwt lwt.unix
+    mirage-crypto
     netstring netclient netgss-system
     ppx_compose.runtime
     ptime ptime.clock.os

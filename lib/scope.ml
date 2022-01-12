@@ -81,7 +81,11 @@ open Cfg
 
 type time = Ptime.t * Ptime.tz_offset_s
 type period = time option * time option
-type error = [`Search_failed | `Time_limit_exceeded | `Size_limit_exceeded]
+
+type error = [
+  | `Search_failed | `Time_limit_exceeded | `Size_limit_exceeded
+  | `Msg of string
+]
 
 let pp_ptimetz ppf (t, tz_offset_s) = Ptime.pp_human ~tz_offset_s () ppf t
 
@@ -91,13 +95,24 @@ let pp_period ppf = function
  | Some tI, None -> Format.fprintf ppf "[%a, ∞)" pp_ptimetz tI
  | Some tI, Some tF -> Format.fprintf ppf "[%a, %a)" pp_ptimetz tI pp_ptimetz tF
 
+let add_time_filter ~scope_name ~update_time_filter period fixed_filter =
+  (match update_time_filter, period with
+   | Some update_time_filter, _ ->
+      (match Ldap_time_filter_cfg.apply update_time_filter period with
+       | [] -> fixed_filter
+       | filters -> `And (fixed_filter :: filters))
+   | None, (None, None) -> fixed_filter
+   | None, (_, _) ->
+      Fmt.failwith "No update time filter provided for scope %s" scope_name)
+
 let process
       ~commit ~period
       ~ldap_conn
       ~global_ldap_filters
       ~default_ldap_update_time_filter
       ~min_update_period
-      ~scope_name ~scope_cfg ~targets () =
+      ~scope_name ~scope_cfg ~targets
+      ?csn_directory_state () =
   let attributes =
     String_set.empty
       |> List.fold (List.fold String_set.add % Target.ldap_attributes) targets
@@ -117,16 +132,23 @@ let process
      | None -> default_ldap_update_time_filter)
   in
 
+  (* Load CSN and add to filter if requested. *)
+  let*? csn_state, fixed_filter =
+    (match csn_directory_state with
+     | None ->
+        Lwt.return_ok (None, fixed_filter)
+     | Some csn_directory_state ->
+        let filter =
+          add_time_filter ~scope_name ~update_time_filter period fixed_filter
+        in
+        let+? csn_state = Csn_state.load csn_directory_state filter in
+        (Some csn_state, `And [Csn_state.filter csn_state; fixed_filter]))
+  in
+
+  (* Search and process entries. *)
   let rec recurse period partition_lb partition_ub =
     let filter =
-      (match update_time_filter, period with
-       | Some update_time_filter, _ ->
-          (match Ldap_time_filter_cfg.apply update_time_filter period with
-           | [] -> fixed_filter
-           | filters -> `And (fixed_filter :: filters))
-       | None, (None, None) -> fixed_filter
-       | None, (_, _) ->
-          Fmt.failwith "No update time filter provided for scope %s" scope_name)
+      add_time_filter ~scope_name ~update_time_filter period fixed_filter
     in
     let filter =
       (match scope_cfg.ldap_partition_attribute_type with
@@ -223,4 +245,9 @@ let process
           >|= fun () ->
         Error `Search_failed)
   in
-  recurse period None None
+  let*? () = recurse period None None in
+
+  (* Save the updated CSN state. *)
+  (match csn_state with
+   | None -> Lwt.return_ok ()
+   | Some csn_state -> Csn_state.save ~commit csn_state)

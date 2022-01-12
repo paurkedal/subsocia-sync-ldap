@@ -28,6 +28,7 @@ type t = {
   ldap_uri: Uri.t;
   ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
+  ldap_csn_state_cfg: Csn_state.Cfg.t option;
   ldap_update_time_filter: Scope.Ldap_time_filter_cfg.t option;
   min_update_period: Ptime.Span.t;
   ldap_timeout: float option;
@@ -224,6 +225,29 @@ let bindings_of_inifile ini section =
    | "ldap_attribute" -> ldap_attribute_of_inifile ini section
    | meth -> error_f "Invalid variable method %s." meth)
 
+let ldap_csn_state_cfg_of_inifile ini section =
+  let csn_context_base_dn =
+    get ~default:"" Fun.id ini section "ldap_csn_context_base_dn"
+  in
+  (match
+    get_opt Fun.id ini section "ldap_csn_state_dir",
+    get_opt Fun.id ini section "ldap_csn_entry_attribute_type",
+    get_opt Fun.id ini section "ldap_csn_context_attribute_type"
+   with
+   | None, None, None ->
+      None
+   | Some csn_state_dir,
+     Some csn_entry_attribute_type,
+     Some csn_context_attribute_type ->
+      Some Csn_state.Cfg.{
+        csn_state_dir;
+        csn_entry_attribute_type;
+        csn_context_base_dn;
+        csn_context_attribute_type;
+      }
+   | _ ->
+      error_f "All CSN settings must be provided if any.")
+
 let ldap_update_time_filter_of_inifile ini section =
   let open Scope.Ldap_time_filter_cfg in
   let time_zone =
@@ -299,6 +323,7 @@ let of_inifile ini =
     ldap_bind;
     ldap_filters =
       get_list Netldapx.filter_of_string ini "connection" "ldap_filter";
+    ldap_csn_state_cfg = ldap_csn_state_cfg_of_inifile ini "connection";
     ldap_update_time_filter =
       ldap_update_time_filter_of_inifile ini "connection";
     min_update_period =
