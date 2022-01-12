@@ -140,15 +140,19 @@ let save ~commit state =
       else
         Log.info (fun f -> f "Writing new CSN %s to %s." csn state.path)
           >>= fun () ->
-        let write_csn oc =
-          Lwt_io.fprintf oc "CSN: %s\nID: %s\n" csn state.scope_descriptor
-            >|= fun () ->
-          Ok ()
-        in
         Lwt.catch
-          (fun () -> Lwt_io.with_file ~mode:Lwt_io.output state.path write_csn)
+          (fun () ->
+            let tmp_path = state.path ^ ".new" in
+            Lwt_io.with_file ~mode:Lwt_io.output tmp_path begin fun oc ->
+              Lwt_io.fprintf oc "CSN: %s\nID: %s\n" csn state.scope_descriptor
+            end >>= fun () ->
+            Lwt_unix.rename tmp_path state.path >|= fun () ->
+            Ok ())
           (function
            | Unix.Unix_error (err, _, _) ->
-              Lwt.return @@ Fmt.error_msg "Failed to save CSN %s to %s: %s"
-                state.path csn (Unix.error_message err)
+              let msg = Unix.error_message err in
+              Log.err (fun f ->
+                f "Failed to save CSN %s to %s: %s" csn state.path msg)
+                >|= fun () ->
+              Fmt.error_msg "Failed to save CSN %s to %s: %s" csn state.path msg
            | exn -> Lwt.fail exn))
