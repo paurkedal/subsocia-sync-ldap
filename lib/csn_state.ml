@@ -99,13 +99,14 @@ let load dstate filter =
     |> Hex.of_cstruct
   in
   let path = Filename.concat dstate.cfg.csn_state_dir (scope_id ^ ".csn") in
+  let* () = Log.debug (fun f -> f "Using CSN file %s." path) in
   let+? done_csn_context =
     let read_csn ic =
       let* line = Lwt_io.read_line ic in
       let n = String.length line in
       if n > 5 && String.sub line 0 5 = "CSN: " then begin
         let csn = String.sub line 5 (n - 5) in
-        let+ () = Log.info (fun f -> f "Loaded CSN %S from %s" csn path) in
+        let+ () = Log.info (fun f -> f "Loaded CSN %S." csn) in
         Ok (Some csn)
       end else begin
         let+ () = Log.err (fun f -> f "CSN file %s is invalid" path) in
@@ -116,7 +117,7 @@ let load dstate filter =
       (fun () -> Lwt_io.with_file ~mode:Lwt_io.input path read_csn)
       (function
        | Unix.Unix_error (Unix.ENOENT, _, _) ->
-          let+ () = Log.info (fun f -> f "No CSN file %s yet." path) in
+          let+ () = Log.info (fun f -> f "CSN file not yet created.") in
           Ok None
        | Unix.Unix_error (err, _, _) ->
           let msg = Unix.error_message err in
@@ -128,18 +129,16 @@ let load dstate filter =
 let save ~commit state =
   (match state.done_csn_context with
    | Some csn when csn = state.dstate.context_csn ->
-      Log.info (fun f -> f "No change to CSN %s." csn) >|= fun () ->
+      Log.info (fun f -> f "No change to CSN %S." csn) >|= fun () ->
       Ok ()
    | _ ->
       let csn = state.dstate.context_csn in
       state.done_csn_context <- Some csn;
       if not commit then
-        Log.info (fun f -> f "Would have written CSN %s to %s." csn state.path)
-          >|= fun () ->
+        Log.info (fun f -> f "Would have written CSN %S." csn) >|= fun () ->
         Ok ()
       else
-        Log.info (fun f -> f "Writing new CSN %s to %s." csn state.path)
-          >>= fun () ->
+        Log.info (fun f -> f "Writing new CSN %S." csn) >>= fun () ->
         Lwt.catch
           (fun () ->
             let tmp_path = state.path ^ ".new" in
@@ -152,7 +151,7 @@ let save ~commit state =
            | Unix.Unix_error (err, _, _) ->
               let msg = Unix.error_message err in
               Log.err (fun f ->
-                f "Failed to save CSN %s to %s: %s" csn state.path msg)
+                f "Failed to save CSN %S to %s: %s" csn state.path msg)
                 >|= fun () ->
-              Fmt.error_msg "Failed to save CSN %s to %s: %s" csn state.path msg
+              Fmt.error_msg "Failed to save CSN %S to %s: %s" csn state.path msg
            | exn -> Lwt.fail exn))
