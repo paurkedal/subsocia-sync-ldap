@@ -99,14 +99,15 @@ let load dstate filter =
     |> Hex.of_cstruct
   in
   let path = Filename.concat dstate.cfg.csn_state_dir (scope_id ^ ".csn") in
-  let* () = Log.debug (fun f -> f "Using CSN file %s." path) in
+  Log.info (fun f ->
+    f "Using CSN file %S for %S" path scope_descriptor) >>= fun () ->
   let+? done_csn_context =
     let read_csn ic =
       let* line = Lwt_io.read_line ic in
       let n = String.length line in
       if n > 5 && String.sub line 0 5 = "CSN: " then begin
         let csn = String.sub line 5 (n - 5) in
-        let+ () = Log.info (fun f -> f "Loaded CSN %S." csn) in
+        let+ () = Log.debug (fun f -> f "Loaded CSN %S." csn) in
         Ok (Some csn)
       end else begin
         let+ () = Log.err (fun f -> f "CSN file %s is invalid" path) in
@@ -133,25 +134,24 @@ let save ~commit state =
       Ok ()
    | _ ->
       let csn = state.dstate.context_csn in
+      Log.info (fun f ->
+        f "Updating CSN from %S to %S."
+          (Option.value ~default:"" state.done_csn_context) csn) >>= fun () ->
       state.done_csn_context <- Some csn;
-      if not commit then
-        Log.info (fun f -> f "Would have written CSN %S." csn) >|= fun () ->
-        Ok ()
-      else
-        Log.info (fun f -> f "Writing new CSN %S." csn) >>= fun () ->
-        Lwt.catch
-          (fun () ->
-            let tmp_path = state.path ^ ".new" in
-            Lwt_io.with_file ~mode:Lwt_io.output tmp_path begin fun oc ->
-              Lwt_io.fprintf oc "CSN: %s\nID: %s\n" csn state.scope_descriptor
-            end >>= fun () ->
-            Lwt_unix.rename tmp_path state.path >|= fun () ->
-            Ok ())
-          (function
-           | Unix.Unix_error (err, _, _) ->
-              let msg = Unix.error_message err in
-              Log.err (fun f ->
-                f "Failed to save CSN %S to %s: %s" csn state.path msg)
-                >|= fun () ->
-              Fmt.error_msg "Failed to save CSN %S to %s: %s" csn state.path msg
-           | exn -> Lwt.fail exn))
+      if not commit then Lwt.return_ok () else
+      Lwt.catch
+        (fun () ->
+          let tmp_path = state.path ^ ".new" in
+          Lwt_io.with_file ~mode:Lwt_io.output tmp_path begin fun oc ->
+            Lwt_io.fprintf oc "CSN: %s\nID: %s\n" csn state.scope_descriptor
+          end >>= fun () ->
+          Lwt_unix.rename tmp_path state.path >|= fun () ->
+          Ok ())
+        (function
+         | Unix.Unix_error (err, _, _) ->
+            let msg = Unix.error_message err in
+            Log.err (fun f ->
+              f "Failed to save CSN %S to %s: %s" csn state.path msg)
+              >|= fun () ->
+            Fmt.error_msg "Failed to save CSN %S to %s: %s" csn state.path msg
+         | exn -> Lwt.fail exn))
