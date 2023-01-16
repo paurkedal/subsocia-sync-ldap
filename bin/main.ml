@@ -1,5 +1,5 @@
 (* subsocia-sync-ldap - Synchonizing LDAP to Subsocia
- * Copyright (C) 2017  University of Copenhagen
+ * Copyright (C) 2017--2023  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@ open Unprime_option
 
 let failwith_f fmt = ksprintf failwith fmt
 
-let main config_file scopes commit filters period =
+let main config_file scopes commit filters period = Lwt_main.run begin
 
   (* Load and check the configuration file. *)
   let ini =
@@ -51,6 +51,7 @@ let main config_file scopes commit filters period =
   (match%lwt Sync.process config ~scopes ~period () with
    | Ok () -> Lwt.return 0
    | Error _ -> Lwt.return 69)
+end
 
 module Arg = struct
   include Cmdliner.Arg
@@ -105,6 +106,7 @@ module Arg = struct
     (parse, print)
 end
 
+module Cmd = Cmdliner.Cmd
 module Term = Cmdliner.Term
 
 let main_cmd =
@@ -135,12 +137,9 @@ let main_cmd =
     Arg.(value @@ opt ptime_interval (None, None) @@ info ~doc ~docv ["period"])
   in
   let term = Term.(const main $ config $ scope $ commit $ filter $ period) in
-  let info = Term.info "subsocia-sync-ldap" in
-  (term, info)
+  let info = Cmd.info "subsocia-sync-ldap" in
+  Cmd.v info term
 
 let () =
   Random.self_init ();
-  (match Cmdliner.Term.eval main_cmd with
-   | `Ok m -> exit (Lwt_main.run m)
-   | `Error _ -> exit 64
-   | `Help | `Version -> exit 0)
+  exit (Cmd.eval' main_cmd)
