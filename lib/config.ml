@@ -1,5 +1,5 @@
 (* subsocia-sync-ldap - LDAP to Subsocia Synchronization
- * Copyright (C) 2017  University of Copenhagen
+ * Copyright (C) 2017--2023  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -287,11 +287,6 @@ let scope_of_inifile ini section = Scope.Cfg.{
   target_names = get_list ident ini section "target";
 }
 
-let log_level_of_string s =
-  (match Logs.level_of_string s with
-   | Ok level -> level
-   | Error (`Msg msg) -> failwith msg)
-
 let log_reporters_of_inifile ini =
   let open Logging.Cfg in
   (match get_opt Template.of_string ini "logger" "file",
@@ -335,7 +330,9 @@ let of_inifile ini =
     scopes = Dict.empty;
     commit = get bool_of_string ini "connection" "commit";
     logging = Logging.Cfg.{
-      level = get log_level_of_string ~default:None ini "logger" "level";
+      verbosity =
+        get Logging.Verbosity.of_string_exn ~default:Logging.Verbosity.default
+            ini "logger" "level";
       reporters = log_reporters_of_inifile ini;
     };
   } in

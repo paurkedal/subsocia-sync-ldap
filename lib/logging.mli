@@ -1,5 +1,5 @@
 (* subsocia-sync-ldap - Synchonizing LDAP to Subsocia
- * Copyright (C) 2018  University of Copenhagen
+ * Copyright (C) 2018--2023  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,6 +15,21 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+module Verbosity : sig
+  type t = {
+    global: Logs.level option option;
+    per_source: (string * Logs.level option) list;
+  }
+
+  val default : t
+
+  val of_string : string -> (t, [> `Msg of string]) result
+
+  val of_string_exn : string -> t
+
+  val pp : t Fmt.t
+end
+
 module Cfg : sig
 
   type reporter =
@@ -22,7 +37,7 @@ module Cfg : sig
     | File_reporter of Template.t
 
   type t = {
-    level: Logs.level option;
+    verbosity: Verbosity.t;
     reporters: reporter list;
   }
 
