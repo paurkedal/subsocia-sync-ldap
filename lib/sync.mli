@@ -1,5 +1,5 @@
 (* subsocia-sync-ldap - Synchonizing LDAP to Subsocia
- * Copyright (C) 2017--2021  University of Copenhagen
+ * Copyright (C) 2017--2023  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,4 +21,5 @@ val process :
   Config.t ->
   scopes: string list ->
   period: Scope.period ->
+  ?ldap_uri_index: int ->
   unit -> (unit, error) result Lwt.t

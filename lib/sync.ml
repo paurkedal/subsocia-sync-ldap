@@ -1,5 +1,5 @@
 (* subsocia-sync-ldap - Synchonizing LDAP to Subsocia
- * Copyright (C) 2017--2021  University of Copenhagen
+ * Copyright (C) 2017--2023  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,10 +23,9 @@ module Sasl_mech_krb5 = Netmech_krb5_sasl.Krb5_gs1 (Netgss.System)
 
 type error = (string * Scope.error) list
 
-let connect_ldap config =
-  Logs.debug (fun m -> m "Connecting to %a." Uri.pp_hum config.Config.ldap_uri);
+let connect_ldap uri config =
+  Logs.debug (fun m -> m "Connecting to %a." Uri.pp_hum uri);
   let ldap_server, ldap_host =
-    let uri = config.Config.ldap_uri in
     (match Uri.scheme uri, Uri.host uri with
      | (Some "ldap" | None), Some host ->
         let port = match Uri.port uri with Some port -> port | None -> 389 in
@@ -60,13 +59,21 @@ let connect_ldap config =
   Netldap.conn_bind ldap_conn bind_creds;
   ldap_conn
 
-let process config ~scopes ~period () =
-  let* ldap_conn = Lwt_preemptive.detach connect_ldap config in
+let process config ~scopes ~period ?ldap_uri_index () =
+  let ldap_uri =
+    let uris = config.Config.ldap_uri in
+    (match uris, ldap_uri_index with
+     | [], _ -> failwith "At least one LDAP URI is needed."
+     | [uri], _ -> uri
+     | _, Some i -> List.nth uris (i mod List.length uris)
+     | _, None -> List.nth uris (Random.int (List.length uris)))
+  in
+  let* ldap_conn = Lwt_preemptive.detach (connect_ldap ldap_uri) config in
   let* csn_directory_state =
     (match config.Config.ldap_csn_state_cfg with
      | None -> Lwt.return_none
      | Some cfg ->
-        let server_id = Uri.to_string config.Config.ldap_uri in
+        let server_id = Uri.to_string ldap_uri in
         Csn_state.Directory.load cfg server_id ldap_conn >|= Option.some)
   in
   let target_cache = Hashtbl.create 3 in

@@ -25,7 +25,7 @@ type ldap_bind =
   | Ldap_bind_sasl_gssapi
 
 type t = {
-  ldap_uri: Uri.t;
+  ldap_uri: Uri.t list;
   ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   ldap_csn_state_cfg: Csn_state.Cfg.t option;
@@ -314,7 +314,7 @@ let of_inifile ini =
         error_f "Unsupported SASL mechanism %s." mech)
   in
   let cfg = {
-    ldap_uri = get Uri.of_string ini "connection" "ldap_uri";
+    ldap_uri = get_list Uri.of_string ini "connection" "ldap_uri";
     ldap_bind;
     ldap_filters =
       get_list Netldapx.filter_of_string ini "connection" "ldap_filter";

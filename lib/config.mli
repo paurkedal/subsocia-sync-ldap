@@ -1,5 +1,5 @@
 (* subsocia-sync-ldap - Synchonizing LDAP to Subsocia
- * Copyright (C) 2017  University of Copenhagen
+ * Copyright (C) 2017--2023  University of Copenhagen
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@ type ldap_bind =
   | Ldap_bind_sasl_gssapi
 
 type t = {
-  ldap_uri: Uri.t;
+  ldap_uri: Uri.t list;
   ldap_bind: ldap_bind;
   ldap_filters: Netldap.filter list; (* conjuncted with target filters *)
   ldap_csn_state_cfg: Csn_state.Cfg.t option;

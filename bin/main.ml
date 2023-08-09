@@ -22,8 +22,9 @@ open Unprime_option
 
 let failwith_f fmt = ksprintf failwith fmt
 
-let main config_file scopes commit filters period = Lwt_main.run begin
-
+let main config_file scopes commit filters period ldap_uri_index =
+  Lwt_main.run
+begin
   (* Load and check the configuration file. *)
   let ini =
     try new Inifiles.inifile config_file with
@@ -48,7 +49,7 @@ let main config_file scopes commit filters period = Lwt_main.run begin
   Logging.setup_logging config.template_env config.logging >>= fun () ->
 
   (* Do the synchronization. *)
-  (match%lwt Sync.process config ~scopes ~period () with
+  (match%lwt Sync.process config ~scopes ~period ?ldap_uri_index () with
    | Ok () -> Lwt.return 0
    | Error _ -> Lwt.return 69)
 end
@@ -136,7 +137,20 @@ let main_cmd =
        for the selected scope or globally." in
     Arg.(value @@ opt ptime_interval (None, None) @@ info ~doc ~docv ["period"])
   in
-  let term = Term.(const main $ config $ scope $ commit $ filter $ period) in
+  let ldap_uri_index =
+    let docv = "INDEX" in
+    let doc =
+      "Pick the given LDAP URI if multiple are configured.  \
+       The choice is done modulus the number of configured URIs, \
+       so e.g. passing the hour of the day can be used to switch \
+       between multiple servers in a deterministic way."
+    in
+    Arg.(value @@ opt (some int) None @@ info ~doc ~docv ["ldap-uri-index"])
+  in
+  let term =
+    let open Term in
+    const main $ config $ scope $ commit $ filter $ period $ ldap_uri_index
+  in
   let info = Cmd.info "subsocia-sync-ldap" in
   Cmd.v info term
 
