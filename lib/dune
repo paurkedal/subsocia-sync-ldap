@@ -4,6 +4,7 @@
   (libraries
     angstrom
     cstruct
+    dns-client-lwt
     fmt
     hex
     inifiles

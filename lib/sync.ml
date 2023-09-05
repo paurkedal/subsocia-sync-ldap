@@ -60,13 +60,25 @@ let connect_ldap uri config =
   ldap_conn
 
 let process config ~scopes ~period ?ldap_uri_index () =
+  (* Resolve SRV record for LDAP if requested. *)
+  let* ldap_uris =
+    let resolve uri =
+      Dns_srv.resolve_ldap_uri uri >>= function
+       | Ok uris -> Lwt.return uris
+       | Error (`Msg msg) ->
+          Log.err (fun m ->
+            m "Failed to resolve %a: %s" Uri.pp uri msg) >|= fun () ->
+          []
+    in
+    Lwt_list.map_s resolve config.Config.ldap_uri >|= List.flatten
+  in
+  (* Pick one of the LDAP servers. *)
   let ldap_uri =
-    let uris = config.Config.ldap_uri in
-    (match uris, ldap_uri_index with
+    (match ldap_uris, ldap_uri_index with
      | [], _ -> failwith "At least one LDAP URI is needed."
      | [uri], _ -> uri
-     | _, Some i -> List.nth uris (i mod List.length uris)
-     | _, None -> List.nth uris (Random.int (List.length uris)))
+     | _, Some i -> List.nth ldap_uris (i mod List.length ldap_uris)
+     | _, None -> List.nth ldap_uris (Random.int (List.length ldap_uris)))
   in
   let* ldap_conn = Lwt_preemptive.detach (connect_ldap ldap_uri) config in
   let* csn_directory_state =

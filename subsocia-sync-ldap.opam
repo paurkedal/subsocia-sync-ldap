@@ -10,6 +10,7 @@ depends: [
   "cmdliner"
   "conf-gssapi"
   "cstruct"
+  "dns-client-lwt"
   "dune" {build}
   "fmt"
   "hex"
