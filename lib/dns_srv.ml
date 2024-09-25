@@ -47,7 +47,8 @@ let parse_ldap_srv_path scheme path =
       Error (`Msg "Invalid LDAP URI, expecting a single path level."))
 
 let resolve_ldap_uri uri =
-  let dns_client = Dns_client_lwt.create () in
+  let happy_eyeballs = Happy_eyeballs_lwt.create () in
+  let dns_client = Dns_client_lwt.create happy_eyeballs in
   let uri_of_srv (srv : Dns.Srv.t) =
     let target = Domain_name.to_string srv.target in
     Log.debug (fun m -> m "%a resolves to %s." Uri.pp uri target);

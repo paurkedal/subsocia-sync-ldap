@@ -89,14 +89,13 @@ let filter state =
    | None -> ub)
 
 let load dstate filter =
-  let module H = Mirage_crypto.Hash.SHA224 in
   let scope_descriptor = String.concat " " [
     dstate.Directory.server_id;
     Netldapx.string_of_filter filter;
   ] in
-  let `Hex scope_id = scope_descriptor
-    |> Cstruct.of_string |> Mirage_crypto.Hash.SHA224.digest
-    |> Hex.of_cstruct
+  let scope_id = scope_descriptor
+    |> Digestif.(digest_string sha224)
+    |> Digestif.(to_hex sha224)
   in
   let path = Filename.concat dstate.cfg.csn_state_dir (scope_id ^ ".csn") in
   Log.info (fun f ->

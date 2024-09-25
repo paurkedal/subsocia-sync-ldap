@@ -4,14 +4,15 @@
   (libraries
     angstrom
     cstruct
+    digestif
     dns-client-lwt
     fmt
     hex
     inifiles
+    happy-eyeballs-lwt
     ldap
     logs logs.lwt
     lwt lwt.unix
-    mirage-crypto
     netstring netclient netgss-system
     ppx_compose.runtime
     ptime ptime.clock.os
