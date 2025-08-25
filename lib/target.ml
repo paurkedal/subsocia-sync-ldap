@@ -135,7 +135,7 @@ module Make (Arg : ARG) () : S = struct
     Lwt_list.iter_s replace attribution.replace
 
   let select_or_warn sel =
-    (match%lwt Entity.select_opt sel with
+    (Entity.select_opt sel >>= function
      | None ->
         Log.warn (fun m ->
           m "Cannot find %s."
@@ -151,23 +151,23 @@ module Make (Arg : ARG) () : S = struct
     let* force_entities = Lwt_list.filter_map_s select_or_warn force_paths in
 
     let force_super super_entity =
-      if%lwt not =|< Entity.is_sub target_entity super_entity then begin
-        let* super_name = Entity.display_name super_entity in
-        Lazy.force start_update >>= fun () ->
-        Commit_log.app (fun m -> m "≼ %s" super_name) >>= fun () ->
-        if not commit then Lwt.return_unit else
-        Entity.force_dsub target_entity super_entity
-      end
+      let* target_is_sub = Entity.is_sub target_entity super_entity in
+      if target_is_sub then Lwt.return_unit else
+      let* super_name = Entity.display_name super_entity in
+      Lazy.force start_update >>= fun () ->
+      Commit_log.app (fun m -> m "≼ %s" super_name) >>= fun () ->
+      if not commit then Lwt.return_unit else
+      Entity.force_dsub target_entity super_entity
     in
 
     let relax_super super_entity =
-      if%lwt Entity.is_sub target_entity super_entity then begin
-        let* super_name = Entity.display_name super_entity in
-        Lazy.force start_update >>= fun () ->
-        Commit_log.app (fun m -> m "⋠ %s" super_name) >>= fun () ->
-        if not commit then Lwt.return_unit else
-        Entity.relax_dsub target_entity super_entity
-      end
+      let* target_is_sub = Entity.is_sub target_entity super_entity in
+      if not target_is_sub then Lwt.return_unit else
+      let* super_name = Entity.display_name super_entity in
+      Lazy.force start_update >>= fun () ->
+      Commit_log.app (fun m -> m "⋠ %s" super_name) >>= fun () ->
+      if not commit then Lwt.return_unit else
+      Entity.relax_dsub target_entity super_entity
     in
 
     Lwt_list.iter_s force_super force_entities >>= fun () ->
@@ -206,7 +206,7 @@ module Make (Arg : ARG) () : S = struct
       let target_path = selector_of_string target_path_str in
       Log.debug (fun m -> m "Processing %s => %s" dn target_path_str)
         >>= fun () ->
-      (match%lwt Entity.select_opt target_path with
+      (Entity.select_opt target_path >>= function
        | None ->
           if check_create_condition lentry then begin
             Stats.(stats.create_count <- stats.create_count + 1);

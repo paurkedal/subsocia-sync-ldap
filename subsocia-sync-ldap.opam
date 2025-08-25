@@ -19,7 +19,6 @@ depends: [
   "ldap"
   "logs"
   "lwt"
-  "lwt_ppx"
   "ocaml-inifiles"
   "ocamlnet"
   "ppx_compose"

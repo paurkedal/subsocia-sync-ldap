@@ -1,6 +1,6 @@
 (library
   (name subsocia_sync_ldap)
-  (preprocess (pps ppx_compose lwt_ppx ppx_regexp))
+  (preprocess (pps ppx_compose ppx_regexp))
   (libraries
     angstrom
     cstruct

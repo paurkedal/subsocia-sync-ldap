@@ -114,7 +114,7 @@ let process config ~scopes ~period ?ldap_uri_index () =
      | Ok () -> None
      | Error err -> Some (scope_name, err))
   in
-  (match%lwt Lwt_list.filter_map_s process_scope scopes with
+  (Lwt_list.filter_map_s process_scope scopes >>= function
    | [] ->
       Log.debug (fun m -> m "Completed with no errors.") >>= fun () ->
       Lwt.return (Ok ())

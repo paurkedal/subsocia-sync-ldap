@@ -49,9 +49,8 @@ begin
   Logging.setup_logging config.template_env config.logging >>= fun () ->
 
   (* Do the synchronization. *)
-  (match%lwt Sync.process config ~scopes ~period ?ldap_uri_index () with
-   | Ok () -> Lwt.return 0
-   | Error _ -> Lwt.return 69)
+  Sync.process config ~scopes ~period ?ldap_uri_index ()
+    >|= (function | Ok () -> 0 | Error _ -> 69)
 end
 
 module Arg = struct
